@@ -49,3 +49,49 @@ class Booking(models.Model):
     
     def __str__(self):
         return f"Booking {self.id} - {self.user.username} - {self.slot}"
+
+
+class OpponentPost(models.Model):
+    """Player-created post for finding a match opponent."""
+
+    SKILL_CHOICES = [
+        ('casual', 'Casual'),
+        ('intermediate', 'Intermediate'),
+        ('advanced', 'Advanced'),
+    ]
+
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('matched', 'Matched'),
+        ('closed', 'Closed'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='opponent_posts')
+    matched_with = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='matched_opponent_posts',
+    )
+    location = models.CharField(max_length=255)
+    preferred_date = models.DateField()
+    preferred_start_time = models.TimeField()
+    preferred_end_time = models.TimeField()
+    skill_level = models.CharField(max_length=20, choices=SKILL_CHOICES, default='casual')
+    notes = models.CharField(max_length=400, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Opponent Post'
+        verbose_name_plural = 'Opponent Posts'
+        indexes = [
+            models.Index(fields=['status', 'preferred_date']),
+            models.Index(fields=['user', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Opponent Post {self.id} - {self.user.username} ({self.status})"

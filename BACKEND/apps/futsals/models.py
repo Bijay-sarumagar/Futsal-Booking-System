@@ -11,6 +11,10 @@ class Futsal(models.Model):
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
     ]
+    QR_PROVIDER_CHOICES = [
+        ('esewa', 'eSewa'),
+        ('fonepay', 'Fonepay'),
+    ]
     
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='futsals')
     futsal_name = models.CharField(max_length=255)
@@ -20,6 +24,13 @@ class Futsal(models.Model):
     latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)
     longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
     description = models.TextField(blank=True, null=True)
+    esewa_qr_image = models.ImageField(upload_to='payment_qr/esewa/', blank=True, null=True)
+    fonepay_qr_image = models.ImageField(upload_to='payment_qr/fonepay/', blank=True, null=True)
+    preferred_qr_provider = models.CharField(
+        max_length=20,
+        choices=QR_PROVIDER_CHOICES,
+        default='esewa',
+    )
     approval_status = models.CharField(
         max_length=20, 
         choices=APPROVAL_STATUS_CHOICES, 

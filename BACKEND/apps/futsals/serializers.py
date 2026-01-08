@@ -17,7 +17,23 @@ class FutsalSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Futsal
-        fields = ['id', 'owner', 'owner_name', 'futsal_name', 'location', 'image', 'amenities', 'latitude', 'longitude', 'description', 'approval_status', 'created_at']
+        fields = [
+            'id',
+            'owner',
+            'owner_name',
+            'futsal_name',
+            'location',
+            'image',
+            'amenities',
+            'latitude',
+            'longitude',
+            'description',
+            'esewa_qr_image',
+            'fonepay_qr_image',
+            'preferred_qr_provider',
+            'approval_status',
+            'created_at',
+        ]
         read_only_fields = ['id', 'owner', 'created_at']
 
 
@@ -28,7 +44,25 @@ class FutsalDetailSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Futsal
-        fields = ['id', 'owner', 'owner_name', 'futsal_name', 'location', 'image', 'amenities', 'latitude', 'longitude', 'description', 'approval_status', 'time_slots', 'created_at', 'updated_at']
+        fields = [
+            'id',
+            'owner',
+            'owner_name',
+            'futsal_name',
+            'location',
+            'image',
+            'amenities',
+            'latitude',
+            'longitude',
+            'description',
+            'esewa_qr_image',
+            'fonepay_qr_image',
+            'preferred_qr_provider',
+            'approval_status',
+            'time_slots',
+            'created_at',
+            'updated_at',
+        ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
 
@@ -36,7 +70,19 @@ class CreateFutsalSerializer(serializers.ModelSerializer):
     """Create/Update Futsal Serializer"""
     class Meta:
         model = Futsal
-        fields = ['id', 'futsal_name', 'location', 'image', 'amenities', 'latitude', 'longitude', 'description']
+        fields = [
+            'id',
+            'futsal_name',
+            'location',
+            'image',
+            'amenities',
+            'latitude',
+            'longitude',
+            'description',
+            'esewa_qr_image',
+            'fonepay_qr_image',
+            'preferred_qr_provider',
+        ]
         read_only_fields = ['id']
 
     def validate_amenities(self, value):

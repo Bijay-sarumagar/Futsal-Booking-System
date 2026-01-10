@@ -12,6 +12,7 @@ class Notification(models.Model):
         ('payment', 'Payment'),
         ('alert', 'Alert'),
         ('review', 'Review'),
+        ('opponent', 'Opponent'),
         ('system', 'System'),
     ]
     

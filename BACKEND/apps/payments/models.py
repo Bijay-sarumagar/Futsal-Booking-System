@@ -5,6 +5,7 @@ from apps.bookings.models import Booking
 class Payment(models.Model):
     """Payment Model"""
     PAYMENT_METHOD_CHOICES = [
+        ('esewa', 'eSewa'),
         ('credit_card', 'Credit Card'),
         ('debit_card', 'Debit Card'),
         ('net_banking', 'Net Banking'),
@@ -29,6 +30,7 @@ class Payment(models.Model):
         default='pending'
     )
     transaction_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    payment_proof_image = models.ImageField(upload_to='payment_proof/', blank=True, null=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

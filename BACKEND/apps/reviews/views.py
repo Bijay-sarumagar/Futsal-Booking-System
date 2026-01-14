@@ -23,9 +23,18 @@ class ReviewViewSet(viewsets.ModelViewSet):
             return CreateReviewSerializer
         return ReviewSerializer
     
+    def create(self, request, *args, **kwargs):
+        futsal_id = request.data.get('futsal')
+        if futsal_id and Review.objects.filter(user=request.user, futsal_id=futsal_id).exists():
+            return Response(
+                {'detail': 'You cannot submit a review for the same futsal.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-    
+
     def perform_update(self, serializer):
         review = self.get_object()
         if review.user != self.request.user:

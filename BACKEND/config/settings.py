@@ -68,27 +68,17 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
-# Set DB_ENGINE=postgresql in .env to use PostgreSQL.
-DB_ENGINE = config('DB_ENGINE', default='sqlite3')
-
-if DB_ENGINE == 'postgresql':
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DATABASE_NAME', default='futsalhub'),
-            'USER': config('DATABASE_USER', default='postgres'),
-            'PASSWORD': config('DATABASE_PASSWORD', default=''),
-            'HOST': config('DATABASE_HOST', default='localhost'),
-            'PORT': config('DATABASE_PORT', default='5432'),
-        }
+# PostgreSQL is required for all environments. Set credentials in .env.
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DATABASE_NAME', default='futsalhub'),
+        'USER': config('DATABASE_USER', default='postgres'),
+        'PASSWORD': config('DATABASE_PASSWORD', default=''),
+        'HOST': config('DATABASE_HOST', default='localhost'),
+        'PORT': config('DATABASE_PORT', default='5432'),
     }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+}
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -182,3 +172,27 @@ LOGGING = {
         },
     },
 }
+
+# Payment gateway configuration
+FRONTEND_BASE_URL = config('FRONTEND_BASE_URL', default='http://localhost:5173')
+ESEWA_BASE_URL = config('ESEWA_BASE_URL', default='https://rc-epay.esewa.com.np')
+ESEWA_PRODUCT_CODE = config('ESEWA_PRODUCT_CODE', default='EPAYTEST')
+ESEWA_SECRET_KEY = config('ESEWA_SECRET_KEY', default='8gBm/:&EnhH.1/q')
+ESEWA_TEST_FIXED_AMOUNT = config('ESEWA_TEST_FIXED_AMOUNT', default='10.00')
+PENDING_BOOKING_EXPIRY_MINUTES = config('PENDING_BOOKING_EXPIRY_MINUTES', default=5, cast=int)
+
+# LLM configuration
+LLM_API_KEY = config('LLM_API_KEY', default='')
+_llm_api_url = config('LLM_API_URL', default='https://api.openai.com/v1/chat/completions').strip()
+if _llm_api_url.rstrip('/').endswith('/api'):
+    _llm_api_url = f"{_llm_api_url.rstrip('/')}/v1/chat/completions"
+LLM_API_URL = _llm_api_url
+LLM_MODEL = config('LLM_MODEL', default='gpt-4o-mini')
+LLM_TEMPERATURE = config('LLM_TEMPERATURE', default=0.4, cast=float)
+LLM_MAX_TOKENS = config('LLM_MAX_TOKENS', default=320, cast=int)
+LLM_REQUEST_TIMEOUT = config('LLM_REQUEST_TIMEOUT', default=10, cast=int)
+LLM_FALLBACK_MODELS = [
+    model.strip()
+    for model in config('LLM_FALLBACK_MODELS', default='').split(',')
+    if model.strip()
+]

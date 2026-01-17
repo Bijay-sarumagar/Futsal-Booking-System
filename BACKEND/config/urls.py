@@ -13,6 +13,7 @@ urlpatterns = [
     
     # API endpoints
     path('api/auth/', include('apps.users.urls')),
+    path('api/ai/', include('apps.users.urls_ai')),
     path('api/users/', include('apps.users.urls_users')),
     path('api/futsals/', include('apps.futsals.urls')),
     path('api/slots/', include('apps.futsals.urls_slots')),

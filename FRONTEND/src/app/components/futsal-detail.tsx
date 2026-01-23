@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router";
-import { MapPin, Clock, ArrowLeft, X, Phone, Share2, Heart, MessageSquare, CheckCircle2, AlertTriangle, CircleX } from "lucide-react";
-import { createBooking, createReview, getFutsalById, getReviews, getSlots, type FutsalItem, type ReviewItem, type TimeSlotItem } from "../lib/api";
+import { MapPin, Clock, ArrowLeft, X, Phone, Share2, Heart, MessageSquare, CheckCircle2, AlertTriangle, CircleX, Car, Shirt, Droplets, Bath, Coffee, Wifi, ShieldCheck, Lightbulb, Copy, ExternalLink, QrCode, Star, Pencil, Trash } from "lucide-react";
+import { cancelBooking, createBooking, createReview, deleteReview, getBookingById, getFutsalById, getReviews, getSlots, initiateEsewaPayment, updateReview, type FutsalItem, type ReviewItem, type TimeSlotItem } from "../lib/api";
 import { toast } from "sonner";
 import { useAuth } from "../auth/auth-context";
+import QRCode from "qrcode";
+import temporaryEsewaQrImage from "../../assets/images/esewa-my-qr.jpg";
 
 interface BookingFeedbackDialog {
   variant: "success" | "warning" | "error";
@@ -13,6 +15,32 @@ interface BookingFeedbackDialog {
   secondaryLabel?: string;
   onPrimary: () => void;
   onSecondary?: () => void;
+}
+
+interface PendingEsewaCheckout {
+  bookingId: number;
+  paymentUrl: string;
+  fields: Record<string, string>;
+  mobileCheckoutUrl: string;
+  qrDataUrl: string | null;
+}
+
+interface OwnerQrCheckout {
+  bookingId: number;
+  slotId: number;
+  amount: number;
+  activeProvider: "esewa" | "fonepay";
+  esewaQrImage: string | null;
+  fonepayQrImage: string | null;
+  futsalName: string;
+  slotDate: string;
+  slotTime: string;
+}
+
+interface CancelPaymentPrompt {
+  source: "gateway" | "owner_qr";
+  bookingId: number;
+  slotId?: number;
 }
 
 export function FutsalDetail() {
@@ -38,10 +66,25 @@ export function FutsalDetail() {
   const [liked, setLiked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
-  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewHoverRating, setReviewHoverRating] = useState(0);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [editReviewId, setEditReviewId] = useState<number | null>(null);
+  const [editReviewRating, setEditReviewRating] = useState(0);
+  const [editReviewHoverRating, setEditReviewHoverRating] = useState(0);
+  const [editReviewComment, setEditReviewComment] = useState("");
+  const [editReviewSubmitting, setEditReviewSubmitting] = useState(false);
+  const [deleteReviewId, setDeleteReviewId] = useState<number | null>(null);
+  const [deleteReviewSubmitting, setDeleteReviewSubmitting] = useState(false);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [venueSubmitting, setVenueSubmitting] = useState(false);
   const [bookingFeedback, setBookingFeedback] = useState<BookingFeedbackDialog | null>(null);
+  const [pendingEsewaCheckout, setPendingEsewaCheckout] = useState<PendingEsewaCheckout | null>(null);
+  const [releasingPendingBooking, setReleasingPendingBooking] = useState(false);
+  const [switchingToGatewayFromOwnerQr, setSwitchingToGatewayFromOwnerQr] = useState(false);
+  const [ownerQrCheckout, setOwnerQrCheckout] = useState<OwnerQrCheckout | null>(null);
+  const [cancelPaymentPrompt, setCancelPaymentPrompt] = useState<CancelPaymentPrompt | null>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -86,7 +129,7 @@ export function FutsalDetail() {
         const slotData = await getSlots({ futsal: futsalId, slotDate: selectedDate });
         setSlots(slotData);
       } catch {
-        toast.error("Failed to load slots");
+        setSlots([]);
       }
     }
 
@@ -111,23 +154,41 @@ export function FutsalDetail() {
   }, [futsalId]);
 
   const dates = useMemo(() => {
-    const base = parseLocalDate(selectedDate);
-    const sunday = new Date(base);
-    sunday.setDate(base.getDate() - base.getDay());
+    const today = new Date();
     return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(sunday);
-      d.setDate(sunday.getDate() + i);
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
       return {
         value: formatLocalDate(d),
         label: d.toLocaleDateString("en", { weekday: "short", day: "numeric", month: "short" }),
       };
     });
-  }, [selectedDate]);
+  }, []);
 
   const selectedSlotItem = slots.find((slot) => slot.id === selectedSlot) || null;
+  const totalAmount = Number(selectedSlotItem?.price || 0);
+  const computedAdvanceAmount = Math.round(totalAmount * 0.1 * 100) / 100;
+  const ownerEsewaQrImage = futsal?.esewa_qr_image || temporaryEsewaQrImage;
+  const hasEsewaOwnerQr = Boolean(ownerEsewaQrImage);
+  const hasFonepayOwnerQr = Boolean(futsal?.fonepay_qr_image);
+  const hasAnyOwnerQr = hasEsewaOwnerQr || hasFonepayOwnerQr;
+  const latitude = futsal?.latitude ? Number(futsal.latitude) : Number.NaN;
+  const longitude = futsal?.longitude ? Number(futsal.longitude) : Number.NaN;
+  const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
+  const mapQuery = hasCoordinates ? `${latitude},${longitude}` : (futsal?.location || "Nepal");
+  const delta = 0.008;
+  const mapEmbedSrc = hasCoordinates
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=${longitude - delta}%2C${latitude - delta}%2C${longitude + delta}%2C${latitude + delta}&layer=mapnik&marker=${latitude}%2C${longitude}`
+    : null;
+  const directionsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
   const averageRating = reviews.length
     ? (reviews.reduce((sum, item) => sum + item.rating, 0) / reviews.length).toFixed(1)
     : "0.0";
+
+  const myReview = useMemo(
+    () => (user ? reviews.find((review) => review.user === user.id) : undefined),
+    [reviews, user?.id],
+  );
 
   const timelineSlots = useMemo(() => {
     const slotByRange = new Map(
@@ -143,8 +204,9 @@ export function FutsalDetail() {
       const end = `${String(nextHour).padStart(2, "0")}:00`;
       const source = slotByRange.get(`${start}-${end}`);
       const isToday = selectedDate === today;
+      const isPastDay = selectedDate < today;
       const slotEndDateTime = new Date(`${selectedDate}T${end}:00`);
-      const isPast = isToday && slotEndDateTime <= now;
+      const isPast = isPastDay || (isToday && slotEndDateTime <= now);
       const isAvailable = !!source && source.availability_status === "available" && !isPast;
 
       return {
@@ -162,7 +224,63 @@ export function FutsalDetail() {
 
   const selectedTimelineSlot = timelineSlots.find((slot) => slot.source?.id === selectedSlot) || null;
 
-  const handleBook = async () => {
+  const openBookingModal = () => {
+    setShowBookingModal(true);
+  };
+
+  const submitEsewaForm = (paymentUrl: string, fields: Record<string, string>) => {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = paymentUrl;
+
+    Object.entries(fields).forEach(([key, value]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+  };
+
+  const buildEsewaStartUrl = (bookingId: number, paymentUrl: string, fields: Record<string, string>) => {
+    const params = new URLSearchParams({
+      booking_id: String(bookingId),
+      payment_url: paymentUrl,
+    });
+    Object.entries(fields).forEach(([key, value]) => {
+      params.set(key, value);
+    });
+    return `${window.location.origin}/payments/esewa-start?${params.toString()}`;
+  };
+
+  const createGatewayCheckoutState = async (bookingId: number) => {
+    const payment = await initiateEsewaPayment(bookingId);
+    const mobileCheckoutUrl = buildEsewaStartUrl(bookingId, payment.payment_url, payment.fields);
+    let qrDataUrl: string | null = null;
+
+    try {
+      qrDataUrl = await QRCode.toDataURL(mobileCheckoutUrl, {
+        width: 320,
+        margin: 1,
+      });
+    } catch {
+      qrDataUrl = null;
+    }
+
+    return {
+      bookingId,
+      paymentUrl: payment.payment_url,
+      fields: payment.fields,
+      mobileCheckoutUrl,
+      qrDataUrl,
+    } as PendingEsewaCheckout;
+  };
+
+  const handlePayWithEsewa = async () => {
     if (!selectedSlot) {
       setBookingFeedback({
         variant: "warning",
@@ -175,51 +293,397 @@ export function FutsalDetail() {
     }
 
     try {
+      setPaymentSubmitting(true);
+      const booking = await createBooking(selectedSlot);
+      if (!booking?.id) {
+        throw new Error("Booking created but booking id is missing. Please try again.");
+      }
+
+      const checkoutState = await createGatewayCheckoutState(booking.id);
+
+      setShowBookingModal(false);
+      setPendingEsewaCheckout(checkoutState);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not start payment";
+      setBookingFeedback({
+        variant: "error",
+        title: "Payment could not start",
+        message: message.length > 100 ? "Could not connect to eSewa. Please try again." : message,
+        primaryLabel: "Try Again",
+        onPrimary: () => setBookingFeedback(null),
+      });
+    } finally {
+      setPaymentSubmitting(false);
+    }
+  };
+
+  const handlePayWithOwnerQr = async () => {
+    if (!selectedSlot) {
+      setBookingFeedback({
+        variant: "warning",
+        title: "Select a time first",
+        message: "Choose an available slot to continue booking.",
+        primaryLabel: "Choose Time",
+        onPrimary: () => setBookingFeedback(null),
+      });
+      return;
+    }
+
+    if (!futsal || !hasAnyOwnerQr) {
+      setBookingFeedback({
+        variant: "error",
+        title: "QR not configured",
+        message: "Owner QR code is not set for this futsal yet. You can use gateway payment or pay at venue.",
+        primaryLabel: "Close",
+        onPrimary: () => setBookingFeedback(null),
+      });
+      return;
+    }
+
+    const preferredProvider = futsal.preferred_qr_provider === "fonepay" ? "fonepay" : "esewa";
+    const fallbackProvider = hasEsewaOwnerQr ? "esewa" : "fonepay";
+    const activeProvider = preferredProvider === "esewa"
+      ? (hasEsewaOwnerQr ? "esewa" : fallbackProvider)
+      : (hasFonepayOwnerQr ? "fonepay" : fallbackProvider);
+
+    try {
+      setPaymentSubmitting(true);
+      const booking = await createBooking(selectedSlot);
+      if (!booking?.id) {
+        throw new Error("Booking created but booking id is missing. Please try again.");
+      }
+
+      setShowBookingModal(false);
+      setOwnerQrCheckout({
+        bookingId: booking.id,
+        slotId: selectedSlot,
+        amount: computedAdvanceAmount,
+        activeProvider,
+        esewaQrImage: ownerEsewaQrImage,
+        fonepayQrImage: futsal.fonepay_qr_image,
+        futsalName: futsal.futsal_name,
+        slotDate: selectedSlotItem?.slot_date || selectedDate,
+        slotTime: selectedSlotItem ? `${formatTimeLabel(selectedSlotItem.start_time)} - ${formatTimeLabel(selectedSlotItem.end_time)}` : "",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not reserve booking";
+      setBookingFeedback({
+        variant: "error",
+        title: "Booking failed",
+        message: message.length > 100 ? "Could not reserve this slot right now. Please try again." : message,
+        primaryLabel: "Try Again",
+        onPrimary: () => setBookingFeedback(null),
+      });
+    } finally {
+      setPaymentSubmitting(false);
+    }
+  };
+
+  const handlePayAtVenue = async () => {
+    if (!selectedSlot) {
+      setBookingFeedback({
+        variant: "warning",
+        title: "Select a time first",
+        message: "Choose an available slot to continue booking.",
+        primaryLabel: "Choose Time",
+        onPrimary: () => setBookingFeedback(null),
+      });
+      return;
+    }
+
+    try {
+      setVenueSubmitting(true);
       await createBooking(selectedSlot);
       setShowBookingModal(false);
+      setSlots((prev) => prev.map((slot) => (
+        slot.id === selectedSlot ? { ...slot, availability_status: "booked" } : slot
+      )));
       setSelectedSlot(null);
-      const slotData = await getSlots({ futsal: futsalId, slotDate: selectedDate });
-      setSlots(slotData);
       setBookingFeedback({
         variant: "success",
         title: "Booking confirmed",
-        message: "Your futsal slot is reserved successfully.",
-        primaryLabel: "View Booking",
-        secondaryLabel: "Book Another",
+        message: "Your slot is reserved. Please pay at the venue before playing.",
+        primaryLabel: "My Bookings",
+        secondaryLabel: "Continue Browsing",
         onPrimary: () => {
           setBookingFeedback(null);
           navigate("/my-bookings");
         },
-        onSecondary: () => setBookingFeedback(null),
-      });
-    } catch (err) {
-      const rawMessage = err instanceof Error ? err.message : "Could not complete booking";
-      const lower = rawMessage.toLowerCase();
-      const isUnavailable = lower.includes("unavailable") || lower.includes("already been booked") || lower.includes("already booked");
-
-      setBookingFeedback({
-        variant: isUnavailable ? "warning" : "error",
-        title: isUnavailable ? "Slot unavailable" : "Booking failed",
-        message: isUnavailable ? "That slot was just booked. Please choose another time." : "Something went wrong. Please try booking again.",
-        primaryLabel: isUnavailable ? "Choose Another Slot" : "Try Again",
-        secondaryLabel: isUnavailable ? "View Booking" : undefined,
-        onPrimary: () => {
-          setShowBookingModal(false);
-          setSelectedSlot(null);
+        onSecondary: () => {
           setBookingFeedback(null);
         },
-        onSecondary: isUnavailable
-          ? () => {
-              setBookingFeedback(null);
-              navigate("/my-bookings");
-            }
-          : undefined,
       });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not complete booking";
+      setBookingFeedback({
+        variant: "error",
+        title: "Booking failed",
+        message: message.length > 100 ? "Could not reserve this slot right now. Please try again." : message,
+        primaryLabel: "Try Again",
+        onPrimary: () => setBookingFeedback(null),
+      });
+    } finally {
+      setVenueSubmitting(false);
+    }
+  };
+
+  const releasePendingBooking = async (payload: {
+    bookingId: number;
+    reopenBookingModal?: boolean;
+    clearGateway?: boolean;
+    clearOwnerQr?: boolean;
+    slotIdToRestore?: number;
+  }) => {
+    const { bookingId, reopenBookingModal, clearGateway, clearOwnerQr, slotIdToRestore } = payload;
+
+    try {
+      setReleasingPendingBooking(true);
+      await cancelBooking(bookingId);
+
+      if (clearGateway) {
+        setPendingEsewaCheckout(null);
+      }
+      if (clearOwnerQr) {
+        setOwnerQrCheckout(null);
+      }
+
+      if (typeof slotIdToRestore === "number") {
+        setSelectedSlot(slotIdToRestore);
+      }
+
+      if (Number.isFinite(futsalId)) {
+        const slotData = await getSlots({ futsal: futsalId, slotDate: selectedDate });
+        setSlots(slotData);
+      }
+
+      if (reopenBookingModal) {
+        openBookingModal();
+      }
+    } catch {
+      setBookingFeedback({
+        variant: "error",
+        title: "Could not cancel payment",
+        message: "Unable to release this slot right now. Please try again.",
+        primaryLabel: "Close",
+        onPrimary: () => setBookingFeedback(null),
+      });
+    } finally {
+      setReleasingPendingBooking(false);
+    }
+  };
+
+  const handleConfirmCancelPendingPayment = async () => {
+    if (!cancelPaymentPrompt) return;
+
+    const prompt = cancelPaymentPrompt;
+    setCancelPaymentPrompt(null);
+
+    if (prompt.source === "gateway") {
+      const clearOwnerQr = Boolean(ownerQrCheckout);
+      await releasePendingBooking({
+        bookingId: prompt.bookingId,
+        clearGateway: true,
+        clearOwnerQr,
+        reopenBookingModal: false,
+        slotIdToRestore: prompt.slotId,
+      });
+      return;
+    }
+
+    await releasePendingBooking({
+      bookingId: prompt.bookingId,
+      clearOwnerQr: true,
+      reopenBookingModal: false,
+      slotIdToRestore: prompt.slotId,
+    });
+  };
+
+  const handleSwitchToGatewayFromOwnerQr = async () => {
+    if (!ownerQrCheckout) return;
+
+    try {
+      setSwitchingToGatewayFromOwnerQr(true);
+
+      const checkoutState = await createGatewayCheckoutState(ownerQrCheckout.bookingId);
+      setPendingEsewaCheckout(checkoutState);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not switch to gateway payment right now.";
+      setBookingFeedback({
+        variant: "error",
+        title: "Could not switch payment method",
+        message,
+        primaryLabel: "Close",
+        onPrimary: () => setBookingFeedback(null),
+      });
+    } finally {
+      setSwitchingToGatewayFromOwnerQr(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!ownerQrCheckout || pendingEsewaCheckout) {
+      return;
+    }
+
+    let isMounted = true;
+    let timerId: number | null = null;
+
+    const pollPaymentStatus = async () => {
+      try {
+        const booking = await getBookingById(ownerQrCheckout.bookingId);
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (booking.payment_status === "completed") {
+          setOwnerQrCheckout(null);
+          setSelectedSlot(null);
+
+          if (Number.isFinite(futsalId)) {
+            const slotData = await getSlots({ futsal: futsalId, slotDate: selectedDate });
+            if (isMounted) {
+              setSlots(slotData);
+            }
+          }
+
+          if (isMounted) {
+            setBookingFeedback({
+              variant: "success",
+              title: "Payment received",
+              message: "Your booking payment was verified automatically.",
+              primaryLabel: "Go to My Bookings",
+              secondaryLabel: "Continue Browsing",
+              onPrimary: () => {
+                setBookingFeedback(null);
+                navigate("/my-bookings");
+              },
+              onSecondary: () => setBookingFeedback(null),
+            });
+          }
+          return;
+        }
+      } catch {
+        // Keep polling without interrupting the payment screen.
+      }
+
+      if (isMounted) {
+        timerId = window.setTimeout(() => {
+          void pollPaymentStatus();
+        }, 4500);
+      }
+    };
+
+    void pollPaymentStatus();
+
+    return () => {
+      isMounted = false;
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, [ownerQrCheckout, pendingEsewaCheckout, futsalId, selectedDate, navigate]);
+
+  const handleEditReview = (review: ReviewItem) => {
+    setEditReviewId(review.id);
+    setEditReviewRating(review.rating);
+    setEditReviewComment(review.comment || "");
+    setEditReviewHoverRating(0);
+  };
+
+  const handleSubmitEditReview = async () => {
+    if (!editReviewId || !futsal) return;
+    if (editReviewRating < 1) {
+      setBookingFeedback({
+        variant: "warning",
+        title: "Select a rating",
+        message: "Please choose at least 1 star before updating your review.",
+        primaryLabel: "OK",
+        onPrimary: () => setBookingFeedback(null),
+      });
+      return;
+    }
+
+    try {
+      setEditReviewSubmitting(true);
+      await updateReview(editReviewId, {
+        rating: editReviewRating,
+        comment: editReviewComment.trim() || undefined,
+      });
+      const reviewData = await getReviews({ futsal: futsal.id });
+      setReviews(reviewData);
+      setEditReviewId(null);
+      setEditReviewComment("");
+      setEditReviewRating(0);
+      setEditReviewHoverRating(0);
+      setBookingFeedback({
+        variant: "success",
+        title: "Review updated",
+        message: "Your review has been updated.",
+        primaryLabel: "Done",
+        onPrimary: () => setBookingFeedback(null),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to update review now";
+      setBookingFeedback({
+        variant: "error",
+        title: "Review not updated",
+        message: message.length > 90 ? "Please try again in a moment." : message,
+        primaryLabel: "Try Again",
+        onPrimary: () => setBookingFeedback(null),
+      });
+    } finally {
+      setEditReviewSubmitting(false);
+    }
+  };
+
+  const handleDeleteReview = (reviewId: number) => {
+    setDeleteReviewId(reviewId);
+  };
+
+  const confirmDeleteReview = async () => {
+    if (deleteReviewId === null || !futsal) return;
+
+    try {
+      setDeleteReviewSubmitting(true);
+      await deleteReview(deleteReviewId);
+      const reviewData = await getReviews({ futsal: futsal.id });
+      setReviews(reviewData);
+      setDeleteReviewId(null);
+      setBookingFeedback({
+        variant: "success",
+        title: "Review deleted",
+        message: "Your review has been removed.",
+        primaryLabel: "Done",
+        onPrimary: () => setBookingFeedback(null),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to delete review now";
+      setBookingFeedback({
+        variant: "error",
+        title: "Review not deleted",
+        message: message.length > 90 ? "Please try again in a moment." : message,
+        primaryLabel: "Try Again",
+        onPrimary: () => setBookingFeedback(null),
+      });
+    } finally {
+      setDeleteReviewSubmitting(false);
     }
   };
 
   const handleSubmitReview = async () => {
     if (!futsal) return;
+
+    if (reviewRating < 1) {
+      setBookingFeedback({
+        variant: "warning",
+        title: "Select a rating",
+        message: "Please choose at least 1 star before submitting your review.",
+        primaryLabel: "OK",
+        onPrimary: () => setBookingFeedback(null),
+      });
+      return;
+    }
 
     try {
       setReviewSubmitting(true);
@@ -232,7 +696,8 @@ export function FutsalDetail() {
       setReviews(reviewData);
       setShowReviewModal(false);
       setReviewComment("");
-      setReviewRating(5);
+      setReviewRating(0);
+      setReviewHoverRating(0);
       setBookingFeedback({
         variant: "success",
         title: "Review submitted",
@@ -267,6 +732,18 @@ export function FutsalDetail() {
   }
 
   const amenityList = futsal.amenities?.length ? futsal.amenities : ["Changing Room", "Parking", "Drinking Water", "Toilet"];
+  const getAmenityIcon = (amenity: string) => {
+    const normalized = amenity.toLowerCase();
+    if (normalized.includes("parking")) return Car;
+    if (normalized.includes("changing")) return Shirt;
+    if (normalized.includes("water")) return Droplets;
+    if (normalized.includes("toilet") || normalized.includes("shower")) return Bath;
+    if (normalized.includes("cafe")) return Coffee;
+    if (normalized.includes("wifi")) return Wifi;
+    if (normalized.includes("first aid")) return ShieldCheck;
+    if (normalized.includes("flood")) return Lightbulb;
+    return CheckCircle2;
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -313,13 +790,53 @@ export function FutsalDetail() {
           {/* Amenities */}
           <div>
             <h3 className="mb-3">Amenities</h3>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2.5">
               {amenityList.map((a) => (
-                <span key={a} className="px-3 py-1.5 rounded-lg border border-border bg-white shadow-sm text-[0.875rem] text-foreground">
+                <span key={a} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-white shadow-sm text-[0.875rem] text-foreground">
+                  {(() => {
+                    const AmenityIcon = getAmenityIcon(a);
+                    return <AmenityIcon className="w-4 h-4 text-emerald-600" />;
+                  })()}
                   {a}
                 </span>
               ))}
             </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-white shadow-sm p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h3>Location Map</h3>
+              <a
+                href={directionsHref}
+                target="_blank"
+                rel="noreferrer"
+                className="text-emerald-600 text-[0.875rem] font-medium hover:underline"
+              >
+                Open in Maps
+              </a>
+            </div>
+            {mapEmbedSrc ? (
+              <div className="rounded-lg border border-border overflow-hidden h-64 bg-muted/20">
+                <iframe
+                  title={`Map for ${futsal.futsal_name}`}
+                  src={mapEmbedSrc}
+                  className="w-full h-full border-0"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border h-64 bg-muted/20 flex flex-col items-center justify-center text-center px-4">
+                <MapPin className="w-8 h-8 text-muted-foreground mb-2" />
+                <p className="text-sm font-medium">Map preview unavailable</p>
+                <p className="text-xs text-muted-foreground mt-1">Coordinates are not saved for this futsal yet.</p>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-2">
+              {hasCoordinates
+                ? `Pinned at ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+                : "Exact coordinates not available yet. Map is using location text."}
+            </p>
           </div>
 
           {/* Time Slots */}
@@ -377,18 +894,49 @@ export function FutsalDetail() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3>Reviews & Ratings</h3>
-              {user?.role === "player" ? (
-                <button onClick={() => setShowReviewModal(true)} className="text-emerald-600 text-[0.875rem]" style={{ fontWeight: 500 }}>
+              {user?.role === "player" && !myReview ? (
+                <button
+                  onClick={() => {
+                    setReviewRating(0);
+                    setReviewHoverRating(0);
+                    setReviewComment("");
+                    setShowReviewModal(true);
+                  }}
+                  className="text-emerald-600 text-[0.875rem]"
+                  style={{ fontWeight: 500 }}
+                >
                   Write a Review
                 </button>
               ) : null}
             </div>
             <div className="space-y-4">
               {reviews.map((review) => (
-                <div key={review.id} className="p-4 bg-gray-50 rounded-xl">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-[0.875rem]" style={{ fontWeight: 600 }}>{review.user_name || "Player"}</p>
-                    <p className="text-[0.8125rem] text-muted-foreground">{new Date(review.review_date).toLocaleDateString()}</p>
+                <div key={review.id} className="p-4 bg-white border border-border rounded-xl shadow-sm">
+                  <div className="flex items-start justify-between gap-4 mb-2">
+                    <div>
+                      <p className="text-[0.875rem]" style={{ fontWeight: 600 }}>{review.user_name || "Player"}</p>
+                      <p className="text-[0.8125rem] text-muted-foreground">{new Date(review.review_date).toLocaleDateString()}</p>
+                    </div>
+                    {user?.id === review.user ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-muted"
+                          title="Edit review"
+                          onClick={() => handleEditReview(review)}
+                        >
+                          <Pencil className="w-4 h-4 text-emerald-600" />
+                        </button>
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-muted"
+                          title="Delete review"
+                          onClick={() => handleDeleteReview(review.id)}
+                        >
+                          <Trash className="w-4 h-4 text-red-600" />
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                   <p className="text-[0.8125rem] text-amber-600 mb-2">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</p>
                   <p className="text-[0.875rem] text-muted-foreground">{review.comment || "No written comment."}</p>
@@ -421,13 +969,10 @@ export function FutsalDetail() {
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowBookingModal(true)}
+                  onClick={openBookingModal}
                   className="w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors cursor-pointer"
                 >
                   Book Now
-                </button>
-                <button className="w-full py-3 border border-border rounded-xl text-muted-foreground hover:bg-muted transition-colors cursor-pointer">
-                  Pay at Venue
                 </button>
               </div>
             ) : (
@@ -468,6 +1013,13 @@ export function FutsalDetail() {
               <h3>Confirm Booking</h3>
               <button onClick={() => setShowBookingModal(false)}><X className="w-5 h-5" /></button>
             </div>
+            <div className="mb-4 rounded-xl overflow-hidden border border-border bg-muted/20">
+              <img
+                src={futsal.image || "https://images.unsplash.com/photo-1552667466-07770ae110d0?auto=format&fit=crop&w=1200&q=80"}
+                alt={futsal.futsal_name}
+                className="w-full h-40 md:h-44 object-cover object-center"
+              />
+            </div>
             <div className="space-y-3 mb-6">
               <div className="flex justify-between text-[0.875rem]">
                 <span className="text-muted-foreground">Court</span>
@@ -482,16 +1034,31 @@ export function FutsalDetail() {
                 <span style={{ fontWeight: 500 }}>{selectedTimelineSlot?.startLabel || (selectedSlotItem?.start_time ? formatTimeLabel(selectedSlotItem.start_time) : "")} - {selectedTimelineSlot?.endLabel || (selectedSlotItem?.end_time ? formatTimeLabel(selectedSlotItem.end_time) : "")}</span>
               </div>
               <div className="flex justify-between text-[0.875rem] pt-3 border-t border-border">
-                <span style={{ fontWeight: 600 }}>Total</span>
-                <span className="text-emerald-600" style={{ fontWeight: 700 }}>Rs. {selectedSlotItem?.price}</span>
+                <span style={{ fontWeight: 600 }}>Total Amount</span>
+                <span className="text-foreground" style={{ fontWeight: 700 }}>Rs. {totalAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-[0.875rem]">
+                <span className="text-muted-foreground">Pay Advance (10%)</span>
+                <span style={{ fontWeight: 600 }}>Rs. {computedAdvanceAmount.toFixed(2)}</span>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <button onClick={handleBook} className="py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 text-[0.875rem]">
-                Pay Online
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={handlePayWithOwnerQr}
+                disabled={paymentSubmitting}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 text-[0.875rem] disabled:opacity-60"
+              >
+                {paymentSubmitting ? "Preparing owner QR..." : "Pay Advance (10%)"}
               </button>
-              <button onClick={handleBook} className="py-3 border border-border rounded-xl hover:bg-muted text-[0.875rem]">
-                Pay at Venue
+            </div>
+            <div className="grid grid-cols-1 gap-3 mb-4">
+              <button
+                onClick={handlePayAtVenue}
+                disabled={venueSubmitting}
+                className="py-3 bg-sky-600 text-white rounded-xl hover:bg-sky-700 text-[0.875rem] disabled:opacity-60"
+              >
+                {venueSubmitting ? "Confirming..." : "Pay at Venue"}
               </button>
             </div>
             <p className="text-[0.75rem] text-muted-foreground text-center">
@@ -500,6 +1067,255 @@ export function FutsalDetail() {
           </div>
         </div>
       )}
+
+      {ownerQrCheckout && !pendingEsewaCheckout ? (
+        <div className="fixed inset-0 z-[72] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-border shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!ownerQrCheckout) return;
+                    setCancelPaymentPrompt({
+                      source: "owner_qr",
+                      bookingId: ownerQrCheckout.bookingId,
+                      slotId: ownerQrCheckout.slotId,
+                    });
+                  }}
+                  className="p-1 rounded hover:bg-muted"
+                  aria-label="Back to booking"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <h3 className="flex items-center gap-2">
+                  <QrCode className="w-5 h-5 text-emerald-600" />
+                  Owner QR Payment
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  if (!ownerQrCheckout) return;
+                  setCancelPaymentPrompt({
+                    source: "owner_qr",
+                    bookingId: ownerQrCheckout.bookingId,
+                    slotId: ownerQrCheckout.slotId,
+                  });
+                }}
+                className="p-1 rounded hover:bg-muted"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-[0.875rem] text-muted-foreground mb-3">
+              Booking #{ownerQrCheckout.bookingId} reserved. Scan and pay advance Rs. {ownerQrCheckout.amount.toFixed(2)}.
+            </p>
+
+            <div className="flex gap-2 mb-3">
+              {ownerQrCheckout.esewaQrImage ? (
+                <button
+                  type="button"
+                  onClick={() => setOwnerQrCheckout((prev) => (prev ? { ...prev, activeProvider: "esewa" } : prev))}
+                  className={`px-3 py-1.5 rounded-lg text-xs border ${ownerQrCheckout.activeProvider === "esewa" ? "bg-emerald-600 text-white border-emerald-600" : "border-border hover:bg-muted"}`}
+                >
+                  eSewa QR
+                </button>
+              ) : null}
+              {ownerQrCheckout.fonepayQrImage ? (
+                <button
+                  type="button"
+                  onClick={() => setOwnerQrCheckout((prev) => (prev ? { ...prev, activeProvider: "fonepay" } : prev))}
+                  className={`px-3 py-1.5 rounded-lg text-xs border ${ownerQrCheckout.activeProvider === "fonepay" ? "bg-emerald-600 text-white border-emerald-600" : "border-border hover:bg-muted"}`}
+                >
+                  Fonepay QR
+                </button>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border border-border bg-muted/10 p-4 mb-4">
+              <p className="text-sm font-semibold text-foreground mb-2">Remarks:</p>
+              <p className="text-sm text-foreground font-medium">{ownerQrCheckout.futsalName}</p>
+              <p className="text-sm text-muted-foreground">{ownerQrCheckout.slotDate} · {ownerQrCheckout.slotTime}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-muted/10 p-4 flex items-center justify-center mb-4">
+              {ownerQrCheckout.activeProvider === "esewa" && ownerQrCheckout.esewaQrImage ? (
+                <img
+                  src={ownerQrCheckout.esewaQrImage}
+                  alt={`Owner eSewa QR for booking #${ownerQrCheckout.bookingId}`}
+                  className="w-64 h-64 md:w-72 md:h-72 object-contain"
+                />
+              ) : null}
+              {ownerQrCheckout.activeProvider === "fonepay" && ownerQrCheckout.fonepayQrImage ? (
+                <img
+                  src={ownerQrCheckout.fonepayQrImage}
+                  alt={`Owner Fonepay QR for booking #${ownerQrCheckout.bookingId}`}
+                  className="w-64 h-64 md:w-72 md:h-72 object-contain"
+                />
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setOwnerQrCheckout(null);
+                  navigate("/my-bookings");
+                }}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-emerald-600 text-white text-sm font-semibold shadow-sm shadow-emerald-200/50 transition hover:bg-emerald-700"
+              >
+                Go to My Bookings
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSwitchToGatewayFromOwnerQr()}
+                disabled={switchingToGatewayFromOwnerQr}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full text-emerald-700 text-sm font-medium underline underline-offset-4 decoration-emerald-500 decoration-2 hover:bg-emerald-50 transition disabled:opacity-60"
+              >
+                {switchingToGatewayFromOwnerQr ? "Switching..." : "Use payment gateway"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingEsewaCheckout ? (
+        <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-border shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                {ownerQrCheckout ? (
+                  <button
+                    type="button"
+                    onClick={() => setPendingEsewaCheckout(null)}
+                    className="p-1 rounded hover:bg-muted"
+                    aria-label="Back to owner QR"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                ) : null}
+                <h3 className="flex items-center gap-2">
+                  <QrCode className="w-5 h-5 text-emerald-600" />
+                  Scan to Pay
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  if (!pendingEsewaCheckout) return;
+                  setCancelPaymentPrompt({
+                    source: "gateway",
+                    bookingId: pendingEsewaCheckout.bookingId,
+                    slotId: ownerQrCheckout?.slotId ?? selectedSlot ?? undefined,
+                  });
+                }}
+                className="p-1 rounded hover:bg-muted"
+                disabled={releasingPendingBooking}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-[0.875rem] text-muted-foreground mb-4">
+              Scan this QR from your mobile payment app, or continue on this device.
+            </p>
+
+            <div className="rounded-xl border border-border bg-muted/10 p-4 flex items-center justify-center mb-4">
+              {pendingEsewaCheckout.qrDataUrl ? (
+                <img
+                  src={pendingEsewaCheckout.qrDataUrl}
+                  alt={`eSewa QR for booking #${pendingEsewaCheckout.bookingId}`}
+                  className="w-56 h-56 object-contain"
+                />
+              ) : (
+                <div className="text-center text-muted-foreground text-sm">
+                  QR could not be generated. Use the link buttons below.
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={() => submitEsewaForm(pendingEsewaCheckout.paymentUrl, pendingEsewaCheckout.fields)}
+                className="inline-flex items-center justify-center gap-2 py-2.5 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700"
+              >
+                <ExternalLink className="w-4 h-4" /> Continue on this device
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(pendingEsewaCheckout.mobileCheckoutUrl);
+                    toast.success("Payment link copied");
+                  } catch {
+                    toast.error("Could not copy payment link");
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-2 py-2.5 rounded-lg border border-border text-sm hover:bg-muted"
+              >
+                <Copy className="w-4 h-4" /> Copy payment link
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!pendingEsewaCheckout) return;
+                  setCancelPaymentPrompt({
+                    source: "gateway",
+                    bookingId: pendingEsewaCheckout.bookingId,
+                    slotId: ownerQrCheckout?.slotId ?? selectedSlot ?? undefined,
+                  });
+                }}
+                disabled={releasingPendingBooking}
+                className="inline-flex items-center justify-center gap-2 py-2.5 rounded-lg border border-red-200 text-red-700 text-sm hover:bg-red-50 disabled:opacity-60"
+              >
+                {releasingPendingBooking ? "Releasing slot..." : "Cancel payment and release slot"}
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-3">
+              After successful eSewa payment, booking status is verified automatically.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {cancelPaymentPrompt ? (
+        <div className="fixed inset-0 z-[74] bg-black/55 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-border shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                Cancel Payment?
+              </h3>
+              <button onClick={() => setCancelPaymentPrompt(null)} className="p-1 rounded hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-5">
+              Are you sure you want to cancel this payment? The slot will be released and you will return to booking.
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelPaymentPrompt(null)}
+                className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-muted"
+              >
+                Keep Payment
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmCancelPendingPayment()}
+                disabled={releasingPendingBooking}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-60"
+              >
+                {releasingPendingBooking ? "Cancelling..." : "Yes, Cancel Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {bookingFeedback ? (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
@@ -537,6 +1353,99 @@ export function FutsalDetail() {
         </div>
       ) : null}
 
+      {editReviewId !== null && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3>Edit Review</h3>
+              <button type="button" onClick={() => setEditReviewId(null)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[0.8125rem] text-muted-foreground">Rating</label>
+                <div
+                  className="mt-2 flex items-center gap-2"
+                  onMouseLeave={() => setEditReviewHoverRating(0)}
+                >
+                  {Array.from({ length: 5 }, (_, index) => {
+                    const value = index + 1;
+                    const previewRating = editReviewHoverRating || editReviewRating;
+                    const active = value <= previewRating;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setEditReviewRating(value)}
+                        onMouseEnter={() => setEditReviewHoverRating(value)}
+                        onFocus={() => setEditReviewHoverRating(value)}
+                        onBlur={() => setEditReviewHoverRating(0)}
+                        aria-label={`Set ${value} star rating`}
+                        className={`p-1 rounded transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          active ? "text-amber-400" : "text-border hover:text-amber-300"
+                        }`}
+                      >
+                        <Star className={`w-6 h-6 transition-all duration-200 ${active ? "fill-current scale-110 -translate-y-0.5" : "fill-transparent"}`} />
+                      </button>
+                    );
+                  })}
+                  <span className="text-sm text-muted-foreground ml-1">
+                    {editReviewRating > 0 ? `${editReviewRating}/5` : "No stars selected"}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="text-[0.8125rem] text-muted-foreground">Comment</label>
+                <textarea
+                  value={editReviewComment}
+                  onChange={(e) => setEditReviewComment(e.target.value)}
+                  rows={4}
+                  placeholder="Update your review..."
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-border"
+                />
+              </div>
+              <button
+                onClick={handleSubmitEditReview}
+                disabled={editReviewSubmitting || editReviewRating < 1}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {editReviewSubmitting ? "Updating..." : "Update Review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteReviewId !== null && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3>Delete Review?</h3>
+              <button type="button" onClick={() => setDeleteReviewId(null)}><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-[0.95rem] text-muted-foreground mb-6">
+              Are you sure you want to delete this review? This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteReviewId(null)}
+                className="px-4 py-2 border border-border rounded-lg text-[0.875rem] hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteReview}
+                disabled={deleteReviewSubmitting}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-[0.875rem] hover:bg-red-700 disabled:opacity-60"
+              >
+                {deleteReviewSubmitting ? "Deleting..." : "Delete Review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showReviewModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
@@ -547,17 +1456,35 @@ export function FutsalDetail() {
             <div className="space-y-4">
               <div>
                 <label className="text-[0.8125rem] text-muted-foreground">Rating</label>
-                <select
-                  value={reviewRating}
-                  onChange={(e) => setReviewRating(Number(e.target.value))}
-                  className="mt-1 w-full px-3 py-2 rounded-lg border border-border"
+                <div
+                  className="mt-2 flex items-center gap-2"
+                  onMouseLeave={() => setReviewHoverRating(0)}
                 >
-                  <option value={5}>5 - Excellent</option>
-                  <option value={4}>4 - Very Good</option>
-                  <option value={3}>3 - Good</option>
-                  <option value={2}>2 - Fair</option>
-                  <option value={1}>1 - Poor</option>
-                </select>
+                  {Array.from({ length: 5 }, (_, index) => {
+                    const value = index + 1;
+                    const previewRating = reviewHoverRating || reviewRating;
+                    const active = value <= previewRating;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setReviewRating(value)}
+                        onMouseEnter={() => setReviewHoverRating(value)}
+                        onFocus={() => setReviewHoverRating(value)}
+                        onBlur={() => setReviewHoverRating(0)}
+                        aria-label={`Set ${value} star rating`}
+                        className={`p-1 rounded transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          active ? "text-amber-400" : "text-border hover:text-amber-300"
+                        }`}
+                      >
+                        <Star className={`w-6 h-6 transition-all duration-200 ${active ? "fill-current scale-110 -translate-y-0.5" : "fill-transparent"}`} />
+                      </button>
+                    );
+                  })}
+                  <span className="text-sm text-muted-foreground ml-1">
+                    {reviewRating > 0 ? `${reviewRating}/5` : "No stars selected"}
+                  </span>
+                </div>
               </div>
               <div>
                 <label className="text-[0.8125rem] text-muted-foreground">Comment</label>
@@ -571,7 +1498,7 @@ export function FutsalDetail() {
               </div>
               <button
                 onClick={handleSubmitReview}
-                disabled={reviewSubmitting}
+                disabled={reviewSubmitting || reviewRating < 1}
                 className="w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-60"
               >
                 {reviewSubmitting ? "Submitting..." : "Submit Review"}

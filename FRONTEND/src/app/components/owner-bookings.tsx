@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, X, Search, Pencil, Trash2, CheckCircle2, CircleX, AlertTriangle } from "lucide-react";
-import { cancelBooking, confirmBooking, deleteBooking, getMyBookings, getSlots, updateBooking, type TimeSlotItem } from "../lib/api";
+import { Check, X, Search, Pencil, Trash2, CheckCircle2, CircleX, AlertTriangle, Camera } from "lucide-react";
+import { cancelBooking, confirmBooking, confirmOwnerQrPayment, deleteBooking, getMyBookings, getSlots, updateBooking, type TimeSlotItem } from "../lib/api";
 
 interface OwnerBookingRow {
   id: number;
@@ -8,11 +8,13 @@ interface OwnerBookingRow {
   futsalId: number;
   futsalName: string;
   playerName: string;
+  playerProfilePicture: string | null;
   date: string;
   time: string;
   amount: number;
   paymentMethod: "online" | "offline";
   paymentStatus: "pending" | "completed" | "failed" | "refunded";
+  paymentProofImage?: string | null;
   status: "confirmed" | "cancelled" | "completed" | "no_show";
 }
 
@@ -38,6 +40,10 @@ export function OwnerBookings() {
   const [selectedEditDate, setSelectedEditDate] = useState<string>("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingBooking, setDeletingBooking] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<OwnerBookingRow | null>(null);
+  const [cancelingBooking, setCancelingBooking] = useState(false);
+  const [confirmingProof, setConfirmingProof] = useState(false);
+  const [proofViewTarget, setProofViewTarget] = useState<OwnerBookingRow | null>(null);
   const [statusEditTarget, setStatusEditTarget] = useState<OwnerBookingRow | null>(null);
   const [statusEditValue, setStatusEditValue] = useState<"completed" | "no_show">("completed");
   const [savingStatusEdit, setSavingStatusEdit] = useState(false);
@@ -66,11 +72,13 @@ export function OwnerBookings() {
         futsalId: booking.futsal_details.futsal_id,
         futsalName: booking.futsal_details.futsal_name,
         playerName: booking.user_name || `Player #${booking.user}`,
+        playerProfilePicture: booking.user_profile_picture || null,
         date: booking.slot_details.slot_date,
         time: `${formatTimeLabel(booking.slot_details.start_time)} - ${formatTimeLabel(booking.slot_details.end_time)}`,
         amount: Number(booking.slot_details.price),
         paymentMethod: booking.payment_status === "completed" ? "online" : "offline",
         paymentStatus: booking.payment_status,
+        paymentProofImage: booking.payment_proof_image || null,
         status: booking.booking_status,
       }));
       setBookings(mapped);
@@ -123,6 +131,34 @@ export function OwnerBookings() {
         primaryLabel: "Close",
         onPrimary: () => setFeedbackDialog(null),
       });
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!cancelTarget) return;
+
+    try {
+      setCancelingBooking(true);
+      await cancelBooking(cancelTarget.id);
+      setBookings((prev) => prev.map((b) => (b.id === cancelTarget.id ? { ...b, status: "cancelled" } : b)));
+      setFeedbackDialog({
+        variant: "success",
+        title: "Booking cancelled",
+        message: "Booking cancelled and slot released.",
+        primaryLabel: "Done",
+        onPrimary: () => setFeedbackDialog(null),
+      });
+    } catch {
+      setFeedbackDialog({
+        variant: "error",
+        title: "Cancel failed",
+        message: "Could not cancel this booking right now.",
+        primaryLabel: "Close",
+        onPrimary: () => setFeedbackDialog(null),
+      });
+    } finally {
+      setCancelingBooking(false);
+      setCancelTarget(null);
     }
   };
 
@@ -277,30 +313,71 @@ export function OwnerBookings() {
     }
   };
 
+  const handleConfirmPaymentProof = async (booking: OwnerBookingRow) => {
+    try {
+      setConfirmingProof(true);
+      await confirmOwnerQrPayment({ booking_id: booking.id });
+      setBookings((prev) => prev.map((item) =>
+        item.id === booking.id ? { ...item, paymentStatus: "completed", paymentMethod: "online" } : item,
+      ));
+      setFeedbackDialog({
+        variant: "success",
+        title: "Payment confirmed",
+        message: "Payment proof is verified and booking is now marked paid.",
+        primaryLabel: "Done",
+        onPrimary: () => setFeedbackDialog(null),
+      });
+      setProofViewTarget(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not confirm payment proof. Please try again.";
+      setFeedbackDialog({
+        variant: "error",
+        title: "Confirmation failed",
+        message,
+        primaryLabel: "Close",
+        onPrimary: () => setFeedbackDialog(null),
+      });
+    } finally {
+      setConfirmingProof(false);
+    }
+  };
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-[1440px] mx-auto px-2 sm:px-4 pb-6 md:pb-8">
       <h1 className="mb-1">Manage Bookings</h1>
-      <p className="text-muted-foreground mb-6">View and manage all court bookings</p>
+      <p className="text-muted-foreground mb-6 text-sm md:text-base">View and manage all court bookings</p>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search player or futsal..." className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-input-background" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search player or futsal..."
+            className="w-full pl-10 pr-4 py-2.5 min-h-11 rounded-lg border border-border bg-input-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {["all", "confirmed", "completed", "cancelled", "no_show"].map((s) => (
-            <button key={s} onClick={() => setStatusFilter(s)} className={`px-3 py-2 rounded-lg text-[0.8125rem] ${statusFilter === s ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground"}`}>
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-2 min-h-10 rounded-lg text-xs sm:text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                statusFilter === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
               {formatLabel(s)}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-border text-[0.8125rem] text-muted-foreground">
+              <tr className="bg-muted/50 border-b border-border text-[0.8125rem] text-muted-foreground">
                 <th className="text-left px-4 py-3 font-[500]">Booking ID</th>
                 <th className="text-left px-4 py-3 font-[500]">Player</th>
                 <th className="text-left px-4 py-3 font-[500]">Date</th>
@@ -321,21 +398,44 @@ export function OwnerBookings() {
                 <tr key={b.id} className="border-b border-border last:border-0 text-[0.875rem]">
                   <td className="px-4 py-3 text-muted-foreground">{b.id}</td>
                   <td className="px-4 py-3">
-                    <div>{b.playerName}</div>
-                    <div className="text-[0.75rem] text-muted-foreground">{b.futsalName}</div>
+                    <div className="flex items-center gap-2.5">
+                      {b.playerProfilePicture ? (
+                        <img
+                          src={b.playerProfilePicture}
+                          alt={b.playerName}
+                          className="w-9 h-9 rounded-full object-cover border border-border"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold border border-border">
+                          {b.playerName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <div>{b.playerName}</div>
+                        <div className="text-[0.75rem] text-muted-foreground">{b.futsalName}</div>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3">{b.date}</td>
                   <td className="px-4 py-3">{b.time}</td>
                   <td className="px-4 py-3">Rs. {b.amount}</td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded text-[0.75rem] ${b.paymentMethod === "online" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>
-                      {formatLabel(b.paymentMethod)}
+                    <span className={`px-2 py-0.5 rounded text-[0.75rem] ${
+                      b.paymentStatus === "completed"
+                        ? "bg-blue-100 text-blue-700"
+                        : b.paymentStatus === "refunded"
+                        ? "bg-red-100 text-red-700"
+                        : b.paymentStatus === "pending"
+                        ? "bg-yellow-100 text-yellow-700"
+                        : "bg-gray-100 text-gray-600"
+                    }`}>
+                      {formatLabel(b.paymentStatus)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-[0.75rem] ${
                       b.status === "confirmed"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-primary/10 text-primary border border-primary/20"
                         : b.status === "completed"
                         ? "bg-blue-100 text-blue-700"
                         : b.status === "no_show"
@@ -356,8 +456,13 @@ export function OwnerBookings() {
                         </button>
                       ) : null}
                       {b.status === "confirmed" ? (
-                        <button onClick={() => handleAction(b.id, "cancelled")} className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 text-[0.75rem]" title="Cancel booking">
+                        <button onClick={() => setCancelTarget(b)} className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 text-[0.75rem]" title="Cancel booking">
                           <X className="w-3.5 h-3.5" /> Cancel
+                        </button>
+                      ) : null}
+                      {b.status === "confirmed" && b.paymentStatus === "pending" && b.paymentProofImage ? (
+                        <button onClick={() => setProofViewTarget(b)} className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded bg-primary/10 text-primary hover:bg-primary/20 text-[0.75rem]" title="Review payment proof">
+                          <Camera className="w-3.5 h-3.5" /> Verify payment
                         </button>
                       ) : null}
                       {(b.status === "completed" || b.status === "no_show" || b.status === "cancelled") ? (
@@ -380,8 +485,8 @@ export function OwnerBookings() {
       </div>
 
       {editTarget ? (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-border">
+        <div className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-6 border border-border">
             <div className="flex items-center justify-between mb-3">
               <h3>Edit Booking</h3>
               <button onClick={() => setEditTarget(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
@@ -420,7 +525,7 @@ export function OwnerBookings() {
               <button
                 onClick={handleSaveEdit}
                 disabled={savingEdit}
-                className="py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                className="py-2.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60"
               >
                 {savingEdit ? "Saving..." : "Save Changes"}
               </button>
@@ -429,9 +534,76 @@ export function OwnerBookings() {
         </div>
       ) : null}
 
+      {proofViewTarget ? (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-4xl p-6 border border-border shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Camera className="w-5 h-5 text-primary" />
+                <h3>Payment proof</h3>
+              </div>
+              <button onClick={() => setProofViewTarget(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
+            </div>
+            {proofViewTarget.paymentProofImage ? (
+              <div className="w-full h-[70vh] overflow-hidden rounded-3xl border border-border bg-slate-50">
+                <img src={proofViewTarget.paymentProofImage} alt="Payment proof" className="w-full h-full object-contain" />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No proof image available.</p>
+            )}
+            <div className="grid grid-cols-2 gap-3 mt-5">
+              <button
+                type="button"
+                onClick={() => setProofViewTarget(null)}
+                className="py-3 border border-border rounded-xl hover:bg-muted"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => proofViewTarget && handleConfirmPaymentProof(proofViewTarget)}
+                disabled={confirmingProof}
+                className="py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-60"
+              >
+                {confirmingProof ? "Confirming..." : "Confirm Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {cancelTarget ? (
+        <div className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-6 border border-border">
+            <div className="flex items-center justify-between mb-3">
+              <h3>Cancel Booking</h3>
+              <button onClick={() => setCancelTarget(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-[0.875rem] text-muted-foreground mb-4">Are you sure you want to cancel this booking? This will release the slot.</p>
+            <div className="rounded-lg bg-muted/40 p-3 mb-5 text-[0.875rem]">
+              <p><span style={{ fontWeight: 600 }}>Player:</span> {cancelTarget.playerName}</p>
+              <p><span style={{ fontWeight: 600 }}>Time:</span> {cancelTarget.time}</p>
+              <p><span style={{ fontWeight: 600 }}>Court:</span> {cancelTarget.futsalName}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setCancelTarget(null)} className="py-2.5 border border-border rounded-lg hover:bg-muted">Keep Booking</button>
+              <button
+                onClick={handleConfirmCancel}
+                disabled={cancelingBooking}
+                className="py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {cancelingBooking ? "Cancelling..." : "Cancel Booking"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      
+
+
       {deleteTarget ? (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-border">
+        <div className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-6 border border-border">
             <div className="flex items-center justify-between mb-3">
               <h3>Delete Booking</h3>
               <button onClick={() => setDeleteTarget(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
@@ -447,7 +619,7 @@ export function OwnerBookings() {
               <button
                 onClick={handleDeleteBooking}
                 disabled={deletingBooking}
-                className="py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                className="py-2.5 rounded-lg bg-destructive text-destructive-foreground hover:opacity-90 disabled:opacity-60"
               >
                 {deletingBooking ? "Deleting..." : "Delete"}
               </button>
@@ -457,8 +629,8 @@ export function OwnerBookings() {
       ) : null}
 
       {statusEditTarget ? (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-border">
+        <div className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-6 border border-border">
             <div className="flex items-center justify-between mb-3">
               <h3>Edit Booking Status</h3>
               <button onClick={() => setStatusEditTarget(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
@@ -483,7 +655,7 @@ export function OwnerBookings() {
               <button
                 onClick={saveStatusEdit}
                 disabled={savingStatusEdit}
-                className="py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                className="py-2.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60"
               >
                 {savingStatusEdit ? "Saving..." : "Save"}
               </button>
@@ -493,11 +665,11 @@ export function OwnerBookings() {
       ) : null}
 
       {feedbackDialog ? (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-border">
+        <div className="fixed inset-0 z-[60] bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-6 border border-border">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                {feedbackDialog.variant === "success" ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : null}
+                {feedbackDialog.variant === "success" ? <CheckCircle2 className="w-5 h-5 text-primary" /> : null}
                 {feedbackDialog.variant === "warning" ? <AlertTriangle className="w-5 h-5 text-amber-600" /> : null}
                 {feedbackDialog.variant === "error" ? <CircleX className="w-5 h-5 text-red-600" /> : null}
                 <h3>{feedbackDialog.title}</h3>
@@ -513,7 +685,7 @@ export function OwnerBookings() {
               ) : null}
               <button
                 onClick={feedbackDialog.onPrimary}
-                className={`px-4 py-2 rounded-lg text-white text-[0.875rem] ${feedbackDialog.variant === "success" ? "bg-emerald-600 hover:bg-emerald-700" : feedbackDialog.variant === "warning" ? "bg-amber-600 hover:bg-amber-700" : "bg-red-600 hover:bg-red-700"}`}
+                className={`px-4 py-2 rounded-lg text-[0.875rem] font-medium ${feedbackDialog.variant === "success" ? "bg-primary text-primary-foreground hover:opacity-90" : feedbackDialog.variant === "warning" ? "bg-amber-600 text-white hover:bg-amber-700" : "bg-destructive text-destructive-foreground hover:opacity-90"}`}
               >
                 {feedbackDialog.primaryLabel}
               </button>

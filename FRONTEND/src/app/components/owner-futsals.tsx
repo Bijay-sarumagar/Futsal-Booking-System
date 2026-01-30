@@ -47,30 +47,30 @@ export function OwnerFutsals() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-[1440px] mx-auto px-2 sm:px-4 pb-6 md:pb-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1>My Futsals</h1>
-          <p className="text-muted-foreground">View and manage your registered futsals</p>
+          <p className="text-muted-foreground text-sm md:text-base mt-1">View and manage your registered futsals</p>
         </div>
       </div>
 
       {loadError ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-[0.875rem] text-red-700 inline-flex items-center gap-2">
-          <CircleX className="w-4 h-4" /> {loadError}
+        <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive inline-flex items-start gap-2">
+          <CircleX className="w-4 h-4 shrink-0 mt-0.5" /> {loadError}
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
         {loading ? (
-          <p className="text-muted-foreground">Loading futsals...</p>
+          <p className="text-muted-foreground col-span-full text-sm">Loading futsals…</p>
         ) : null}
 
         {!loading && futsals.length === 0 ? (
-          <div className="md:col-span-2 xl:col-span-3 border border-border rounded-xl bg-white p-6 text-center">
-            <PlusCircle className="w-8 h-8 mx-auto text-emerald-600 mb-2" />
-            <p className="text-[0.9375rem]" style={{ fontWeight: 600 }}>No futsals registered yet</p>
-            <p className="text-muted-foreground text-[0.875rem] mt-1">Go to Manage Slots and register your first futsal.</p>
+          <div className="md:col-span-2 xl:col-span-3 border border-dashed border-border rounded-xl bg-card p-8 md:p-10 text-center shadow-sm">
+            <PlusCircle className="w-10 h-10 mx-auto text-primary mb-3" />
+            <p className="text-base font-semibold text-foreground">No futsals registered yet</p>
+            <p className="text-muted-foreground text-sm mt-2 max-w-md mx-auto">Go to Manage Slots and register your first futsal.</p>
           </div>
         ) : null}
 
@@ -78,7 +78,7 @@ export function OwnerFutsals() {
           <Link
             key={futsal.id}
             to={`/owner/futsals/${futsal.id}`}
-            className="group text-left bg-white rounded-xl overflow-hidden border border-border shadow-sm hover:shadow-lg transition-shadow"
+            className="group text-left bg-card rounded-xl overflow-hidden border border-border shadow-sm hover:shadow-md hover:border-primary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <div className="relative h-48 overflow-hidden">
               <img
@@ -87,18 +87,26 @@ export function OwnerFutsals() {
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
             </div>
-            <div className="p-4">
-              <h3 className="text-[1rem]">{futsal.futsal_name}</h3>
-              <p className="text-[0.8125rem] text-muted-foreground inline-flex items-center gap-1 mt-1"><MapPin className="w-3.5 h-3.5" /> {futsal.location}</p>
-              <p className="text-[0.8125rem] text-muted-foreground mt-2 line-clamp-2">{futsal.description || "No description yet."}</p>
-              <p className="text-[0.75rem] text-muted-foreground mt-2">Time slots today: {slotCountsByFutsal[futsal.id] ?? 0}</p>
-              <div className="mt-3 text-[0.75rem]" style={{ fontWeight: 600 }}>
+            <div className="p-4 md:p-5">
+              <h3 className="text-base font-semibold">{futsal.futsal_name}</h3>
+              <p className="text-sm text-muted-foreground inline-flex items-center gap-1.5 mt-1.5">
+                <MapPin className="w-3.5 h-3.5 shrink-0" /> {futsal.location}
+              </p>
+              <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{futsal.description || "No description yet."}</p>
+              <p className="text-xs text-muted-foreground mt-3">Time slots today: {slotCountsByFutsal[futsal.id] ?? 0}</p>
+              <div className="mt-3 text-xs font-semibold">
                 {futsal.approval_status === "approved" ? (
-                  <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> Approved</span>
+                  <span className="inline-flex items-center gap-1.5 text-primary">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Approved
+                  </span>
                 ) : futsal.approval_status === "rejected" ? (
-                  <span className="inline-flex items-center gap-1 text-red-700"><CircleX className="w-3.5 h-3.5" /> Denied</span>
+                  <span className="inline-flex items-center gap-1.5 text-destructive">
+                    <CircleX className="w-3.5 h-3.5" /> Denied
+                  </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-yellow-700"><Clock3 className="w-3.5 h-3.5" /> Pending</span>
+                  <span className="inline-flex items-center gap-1.5 text-amber-800">
+                    <Clock3 className="w-3.5 h-3.5" /> Pending
+                  </span>
                 )}
               </div>
             </div>

@@ -45,6 +45,8 @@ export function OwnerSlots() {
     availabilityStatus: "available" | "booked" | "maintenance";
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [creatingFutsal, setCreatingFutsal] = useState(false);
   const [creatingSlot, setCreatingSlot] = useState(false);
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
@@ -55,11 +57,15 @@ export function OwnerSlots() {
   const [futsalForm, setFutsalForm] = useState({
     futsal_name: "",
     location: "",
+    map_link: "",
     description: "",
     amenities: [] as string[],
     latitude: "",
     longitude: "",
     image: null as File | null,
+    preferred_qr_provider: "esewa" as "esewa" | "fonepay",
+    esewa_qr_image: null as File | null,
+    fonepay_qr_image: null as File | null,
   });
   const [customAmenity, setCustomAmenity] = useState("");
   const [slotForm, setSlotForm] = useState({
@@ -112,6 +118,101 @@ export function OwnerSlots() {
     return allDates;
   };
 
+  const extractCoordinatesFromMapLink = (value: string): { latitude: string; longitude: string } | null => {
+    if (!value.trim()) return null;
+
+    const plainCoordMatch = value.trim().match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (plainCoordMatch) {
+      return {
+        latitude: Number(plainCoordMatch[1]).toFixed(8),
+        longitude: Number(plainCoordMatch[2]).toFixed(8),
+      };
+    }
+
+    const patterns: RegExp[] = [
+      /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+      /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+      /[?&]query=(-?\d+\.\d+),(-?\d+\.\d+)/,
+      /[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+      /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+      /!8m2!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = value.match(pattern);
+      if (!match) continue;
+      return {
+        latitude: Number(match[1]).toFixed(8),
+        longitude: Number(match[2]).toFixed(8),
+      };
+    }
+
+    return null;
+  };
+
+  const applyCoordinatesFromLocation = async () => {
+    const query = futsalForm.location.trim();
+    if (!query) {
+      setDialogState({
+        variant: "warning",
+        title: "Location required",
+        message: "Enter a location name first.",
+        primaryLabel: "Close",
+        onPrimary: () => setDialogState(null),
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(`${query}, Nepal`)}`);
+      const data = (await response.json()) as Array<{ lat: string; lon: string }>;
+      if (!data.length) {
+        setDialogState({
+          variant: "warning",
+          title: "Location not found",
+          message: "Could not find coordinates for this location. Try a more specific name.",
+          primaryLabel: "Close",
+          onPrimary: () => setDialogState(null),
+        });
+        return;
+      }
+
+      setFutsalForm((prev) => ({
+        ...prev,
+        latitude: Number(data[0].lat).toFixed(8),
+        longitude: Number(data[0].lon).toFixed(8),
+      }));
+    } catch {
+      setDialogState({
+        variant: "error",
+        title: "Lookup failed",
+        message: "Unable to fetch coordinates right now. Please try again.",
+        primaryLabel: "Close",
+        onPrimary: () => setDialogState(null),
+      });
+    }
+  };
+
+  const applyCoordinatesFromMapLink = () => {
+    const coords = extractCoordinatesFromMapLink(futsalForm.map_link);
+    if (!coords) {
+      setDialogState({
+        variant: "warning",
+        title: "Coordinates not found",
+        message: "Could not detect latitude/longitude from this map link. You can still enter them manually.",
+        primaryLabel: "Close",
+        onPrimary: () => setDialogState(null),
+      });
+      return;
+    }
+
+    setFutsalForm((prev) => ({
+      ...prev,
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+    }));
+  };
+
   const loadSlotsForFutsal = async (futsalId: number, slotDate?: string) => {
     const slotList = await getSlots({ futsal: futsalId, slotDate });
     const mapped: SlotConfig[] = slotList.map((slot) => ({
@@ -144,8 +245,13 @@ export function OwnerSlots() {
     async function loadSlots() {
       try {
         setLoading(true);
+        setInitialLoadFailed(false);
         await loadOwnerData();
+        setInitialLoadComplete(true);
       } catch {
+        setInitialLoadFailed(true);
+        setSelectedFutsalId(null);
+        setSlots([]);
         setDialogState({
           variant: "error",
           title: "Could not load slots",
@@ -170,20 +276,26 @@ export function OwnerSlots() {
       try {
         await loadSlotsForFutsal(selectedFutsalId, viewDate);
       } catch {
+        const fallbackFutsalId = futsalOptions[0]?.id;
+        if (fallbackFutsalId && fallbackFutsalId !== selectedFutsalId) {
+          setSelectedFutsalId(fallbackFutsalId);
+          return;
+        }
+
         setDialogState({
           variant: "error",
           title: "Could not load selected futsal slots",
-          message: "Try selecting the futsal again.",
+          message: "Try selecting another futsal or refresh the page.",
           primaryLabel: "Close",
           onPrimary: () => setDialogState(null),
         });
       }
     }
 
-    if (!loading) {
+    if (!loading && initialLoadComplete && !initialLoadFailed) {
       reloadForFutsal();
     }
-  }, [selectedFutsalId, viewDate, loading]);
+  }, [selectedFutsalId, viewDate, loading, futsalOptions, initialLoadComplete, initialLoadFailed]);
 
   const startEdit = (slot: SlotConfig) => {
     setEditTarget(slot);
@@ -276,8 +388,23 @@ export function OwnerSlots() {
         latitude: futsalForm.latitude.trim() || undefined,
         longitude: futsalForm.longitude.trim() || undefined,
         image: futsalForm.image,
+        preferred_qr_provider: futsalForm.preferred_qr_provider,
+        esewa_qr_image: futsalForm.esewa_qr_image,
+        fonepay_qr_image: futsalForm.fonepay_qr_image,
       });
-      setFutsalForm({ futsal_name: "", location: "", description: "", amenities: [], latitude: "", longitude: "", image: null });
+      setFutsalForm({
+        futsal_name: "",
+        location: "",
+        map_link: "",
+        description: "",
+        amenities: [],
+        latitude: "",
+        longitude: "",
+        image: null,
+        preferred_qr_provider: "esewa",
+        esewa_qr_image: null,
+        fonepay_qr_image: null,
+      });
       setCustomAmenity("");
       setRegisterModalOpen(false);
       await loadOwnerData(created.id);
@@ -473,7 +600,7 @@ export function OwnerSlots() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
+    <div className="max-w-[1440px] mx-auto px-2 sm:px-4 pb-6 md:pb-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1>Manage Slots & Pricing</h1>
@@ -481,7 +608,7 @@ export function OwnerSlots() {
         </div>
       </div>
 
-      <div className="bg-white border border-border rounded-xl p-4 mb-6">
+      <div className="bg-card border border-border rounded-xl shadow-sm p-4 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div>
             <p className="text-[0.95rem]" style={{ fontWeight: 600 }}>Slot Actions</p>
@@ -491,7 +618,7 @@ export function OwnerSlots() {
             <button
               type="button"
               onClick={() => setRegisterModalOpen(true)}
-              className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90"
             >
               Register Futsal
             </button>
@@ -507,8 +634,8 @@ export function OwnerSlots() {
       </div>
 
       {registerModalOpen ? (
-        <div className="fixed inset-0 z-[52] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-3xl border border-border p-6 max-h-[88vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[52] bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-3xl border border-border p-6 max-h-[88vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3>Register Your Futsal</h3>
               <button onClick={() => setRegisterModalOpen(false)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
@@ -526,6 +653,28 @@ export function OwnerSlots() {
                 placeholder="Location"
                 className="px-3 py-2 rounded-lg border border-border"
               />
+              <button
+                type="button"
+                onClick={applyCoordinatesFromLocation}
+                className="px-3 py-2 rounded-lg border border-border hover:bg-muted text-[0.875rem]"
+              >
+                Use Location
+              </button>
+              <div className="sm:col-span-2 flex gap-2">
+                <input
+                  value={futsalForm.map_link}
+                  onChange={(e) => setFutsalForm((prev) => ({ ...prev, map_link: e.target.value }))}
+                  placeholder="Google Maps link (optional)"
+                  className="flex-1 px-3 py-2 rounded-lg border border-border"
+                />
+                <button
+                  type="button"
+                  onClick={applyCoordinatesFromMapLink}
+                  className="px-3 py-2 rounded-lg border border-border hover:bg-muted text-[0.875rem]"
+                >
+                  Use Link
+                </button>
+              </div>
               <input
                 value={futsalForm.latitude}
                 onChange={(e) => setFutsalForm((prev) => ({ ...prev, latitude: e.target.value }))}
@@ -561,6 +710,54 @@ export function OwnerSlots() {
                 ) : null}
               </div>
 
+              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[0.75rem] text-muted-foreground mb-1">Preferred QR Provider</label>
+                  <select
+                    value={futsalForm.preferred_qr_provider}
+                    onChange={(e) => setFutsalForm((prev) => ({ ...prev, preferred_qr_provider: e.target.value as "esewa" | "fonepay" }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border"
+                  >
+                    <option value="esewa">eSewa</option>
+                    <option value="fonepay">Fonepay</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[0.75rem] text-muted-foreground mb-1">eSewa QR Image</label>
+                  <label className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-muted cursor-pointer text-[0.8125rem]">
+                    <Camera className="w-4 h-4" /> Upload eSewa QR
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setFutsalForm((prev) => ({ ...prev, esewa_qr_image: e.target.files?.[0] || null }))}
+                      className="hidden"
+                    />
+                  </label>
+                  {futsalForm.esewa_qr_image ? (
+                    <p className="text-[0.75rem] text-muted-foreground mt-1">Selected: {futsalForm.esewa_qr_image.name}</p>
+                  ) : null}
+                </div>
+
+                <div>
+                  <label className="block text-[0.75rem] text-muted-foreground mb-1">Fonepay QR Image</label>
+                  <label className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-muted cursor-pointer text-[0.8125rem]">
+                    <Camera className="w-4 h-4" /> Upload Fonepay QR
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setFutsalForm((prev) => ({ ...prev, fonepay_qr_image: e.target.files?.[0] || null }))}
+                      className="hidden"
+                    />
+                  </label>
+                  {futsalForm.fonepay_qr_image ? (
+                    <p className="text-[0.75rem] text-muted-foreground mt-1">Selected: {futsalForm.fonepay_qr_image.name}</p>
+                  ) : null}
+                </div>
+              </div>
+
               <div className="sm:col-span-2">
                 <label className="block text-[0.75rem] text-muted-foreground mb-1">Amenities</label>
                 <div className="flex flex-wrap gap-2">
@@ -571,7 +768,7 @@ export function OwnerSlots() {
                         key={amenity}
                         type="button"
                         onClick={() => toggleAmenity(amenity)}
-                        className={`px-3 py-1.5 rounded-full text-[0.8125rem] border ${selected ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-muted-foreground border-border hover:bg-muted"}`}
+                        className={`px-3 py-1.5 rounded-full text-[0.8125rem] border ${selected ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted"}`}
                       >
                         {amenity}
                       </button>
@@ -598,9 +795,9 @@ export function OwnerSlots() {
                 {futsalForm.amenities.length ? (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {futsalForm.amenities.map((amenity) => (
-                      <span key={amenity} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[0.75rem]">
+                      <span key={amenity} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-[0.75rem]">
                         {amenity}
-                        <button type="button" onClick={() => toggleAmenity(amenity)} className="hover:text-emerald-900">
+                        <button type="button" onClick={() => toggleAmenity(amenity)} className="hover:text-primary">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </span>
@@ -614,7 +811,7 @@ export function OwnerSlots() {
               <button
                 onClick={handleCreateFutsal}
                 disabled={creatingFutsal}
-                className="py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                className="py-2.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60"
               >
                 {creatingFutsal ? "Registering..." : "Register Futsal"}
               </button>
@@ -624,8 +821,8 @@ export function OwnerSlots() {
       ) : null}
 
       {createSlotModalOpen ? (
-        <div className="fixed inset-0 z-[53] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-xl border border-border p-6">
+        <div className="fixed inset-0 z-[53] bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-xl border border-border p-6">
             <div className="flex items-center justify-between mb-4">
               <h3>Create Time Slot</h3>
               <button onClick={() => setCreateSlotModalOpen(false)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
@@ -689,14 +886,14 @@ export function OwnerSlots() {
                   <button
                     type="button"
                     onClick={() => setRepeatWeekly(true)}
-                    className={`px-3 py-2 text-[0.8125rem] ${repeatWeekly ? "bg-emerald-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+                    className={`px-3 py-2 text-[0.8125rem] ${repeatWeekly ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}
                   >
                     Repeat Weekly
                   </button>
                   <button
                     type="button"
                     onClick={() => setRepeatWeekly(false)}
-                    className={`px-3 py-2 text-[0.8125rem] border-l border-border ${!repeatWeekly ? "bg-emerald-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+                    className={`px-3 py-2 text-[0.8125rem] border-l border-border ${!repeatWeekly ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}
                   >
                     This Week Only
                   </button>
@@ -716,7 +913,7 @@ export function OwnerSlots() {
               <button
                 onClick={handleCreateSlot}
                 disabled={creatingSlot}
-                className="py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                className="py-2.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60"
               >
                 {creatingSlot ? "Creating..." : "Create Slot"}
               </button>
@@ -727,22 +924,22 @@ export function OwnerSlots() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl shadow-sm p-4">
           <p className="text-[0.8125rem] text-muted-foreground">Active Slots</p>
           <p className="text-[1.5rem]" style={{ fontWeight: 700 }}>{slots.filter((s) => s.availabilityStatus === "available").length}</p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl shadow-sm p-4">
           <p className="text-[0.8125rem] text-muted-foreground">Avg Price</p>
           <p className="text-[1.5rem]" style={{ fontWeight: 700 }}>Rs. {avgPrice}</p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl shadow-sm p-4">
           <p className="text-[0.8125rem] text-muted-foreground">Peak Price</p>
           <p className="text-[1.5rem]" style={{ fontWeight: 700 }}>Rs. {peakPrice}</p>
         </div>
       </div>
 
       {/* Slots Table */}
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-border bg-gray-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <h3 className="text-[0.95rem]">All Slots</h3>
@@ -802,7 +999,7 @@ export function OwnerSlots() {
                   <td className="px-4 py-3">
                     <span className={`px-3 py-1 rounded-full text-[0.75rem] capitalize ${
                       s.availabilityStatus === "available"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-primary/10 text-primary border border-primary/20"
                         : s.availabilityStatus === "booked"
                         ? "bg-red-100 text-red-700"
                         : "bg-yellow-100 text-yellow-700"
@@ -836,8 +1033,8 @@ export function OwnerSlots() {
       </div>
 
       {deleteTarget ? (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-border">
+        <div className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-6 border border-border">
             <div className="flex items-center justify-between mb-3">
               <h3>Delete Slot</h3>
               <button onClick={() => setDeleteTarget(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
@@ -862,8 +1059,8 @@ export function OwnerSlots() {
       ) : null}
 
       {editTarget && editDraft ? (
-        <div className="fixed inset-0 z-[55] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-xl p-6 border border-border">
+        <div className="fixed inset-0 z-[55] bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-xl p-6 border border-border">
             <div className="flex items-center justify-between mb-4">
               <h3>Edit Slot</h3>
               <button onClick={cancelEdit} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
@@ -932,7 +1129,7 @@ export function OwnerSlots() {
 
             <div className="grid grid-cols-2 gap-3 mt-5">
               <button onClick={cancelEdit} className="py-2.5 border border-border rounded-lg hover:bg-muted">Cancel</button>
-              <button onClick={() => saveEdit(editTarget.id)} className="py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center justify-center gap-2">
+              <button onClick={() => saveEdit(editTarget.id)} className="py-2.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 inline-flex items-center justify-center gap-2">
                 <Save className="w-4 h-4" /> Save Slot
               </button>
             </div>
@@ -941,11 +1138,11 @@ export function OwnerSlots() {
       ) : null}
 
       {dialogState ? (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-border">
+        <div className="fixed inset-0 z-[60] bg-foreground/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-6 border border-border">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                {dialogState.variant === "success" ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : null}
+                {dialogState.variant === "success" ? <CheckCircle2 className="w-5 h-5 text-primary" /> : null}
                 {dialogState.variant === "warning" ? <AlertTriangle className="w-5 h-5 text-amber-600" /> : null}
                 {dialogState.variant === "error" ? <CircleX className="w-5 h-5 text-red-600" /> : null}
                 <h3>{dialogState.title}</h3>
@@ -961,7 +1158,7 @@ export function OwnerSlots() {
               ) : null}
               <button
                 onClick={dialogState.onPrimary}
-                className={`px-4 py-2 rounded-lg text-white text-[0.875rem] ${dialogState.variant === "success" ? "bg-emerald-600 hover:bg-emerald-700" : dialogState.variant === "warning" ? "bg-amber-600 hover:bg-amber-700" : "bg-red-600 hover:bg-red-700"}`}
+                className={`px-4 py-2 rounded-lg text-[0.875rem] font-medium ${dialogState.variant === "success" ? "bg-primary text-primary-foreground hover:opacity-90" : dialogState.variant === "warning" ? "bg-amber-600 text-white hover:bg-amber-700" : "bg-destructive text-destructive-foreground hover:opacity-90"}`}
               >
                 {dialogState.primaryLabel}
               </button>

@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { Search, MapPin, Star, Filter, ArrowRight, Zap, Shield, Clock, Users, Sparkles } from "lucide-react";
+import { Search, MapPin, Star, ArrowRight, Zap, Shield, Clock, Users, Sparkles } from "lucide-react";
+import L from "leaflet";
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import { futsalImages, heroImage } from "./data";
 import { FutsalItem, getFutsals } from "../lib/api";
+import "../../styles/player-home.css";
+
+const defaultMarkerIcon = L.icon({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
 
 export function PlayerHome() {
   const [search, setSearch] = useState("");
@@ -36,6 +53,8 @@ export function PlayerHome() {
         name: f.futsal_name,
         location: f.location,
         district,
+        latitude: f.latitude,
+        longitude: f.longitude,
         price: 1500,
         rating: 4.5,
         reviews: 0,
@@ -55,114 +74,148 @@ export function PlayerHome() {
       (f.name.toLowerCase().includes(search.toLowerCase()) || f.location.toLowerCase().includes(search.toLowerCase()))
   );
 
+  const mapPoints = useMemo(() => {
+    return filtered
+      .map((f) => {
+        const lat = Number(f.latitude);
+        const lng = Number(f.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          return null;
+        }
+        return { id: f.id, name: f.name, location: f.location, district: f.district, lat, lng };
+      })
+      .filter(
+        (
+          point,
+        ): point is { id: string; name: string; location: string; district: string; lat: number; lng: number } =>
+          point !== null,
+      );
+  }, [filtered]);
+
+  const formatDistrictBadge = (district: string) => {
+    const cleaned = district
+      .replace(/\b\d{5}\b/g, "")
+      .replace(/\s{2,}/g, " ")
+      .replace(/[,-]\s*$/, "")
+      .trim();
+    return cleaned || "Area";
+  };
+
+  const mapCenter = useMemo<[number, number]>(() => {
+    if (!mapPoints.length) return [27.7172, 85.3240];
+
+    const districtCounts = new Map<string, number>();
+    mapPoints.forEach((point) => {
+      districtCounts.set(point.district, (districtCounts.get(point.district) || 0) + 1);
+    });
+
+    const majorityDistrict = Array.from(districtCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const focusPoints = majorityDistrict
+      ? mapPoints.filter((point) => point.district === majorityDistrict)
+      : mapPoints;
+
+    const avgLat = focusPoints.reduce((sum, p) => sum + p.lat, 0) / focusPoints.length;
+    const avgLng = focusPoints.reduce((sum, p) => sum + p.lng, 0) / focusPoints.length;
+    return [avgLat, avgLng];
+  }, [mapPoints]);
+
   return (
-    <div>
-      {/* Hero */}
-      <section className="relative h-[420px] overflow-hidden">
-        <img src={heroImage} alt="Nepal" className="absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/30" />
-        <div className="relative z-10 max-w-7xl mx-auto px-4 h-full flex flex-col justify-center">
-          <h1 className="text-white text-[2.5rem] max-w-xl" style={{ fontWeight: 800, lineHeight: 1.1 }}>
-            Book Futsal Courts Across Nepal
-          </h1>
-          <p className="text-gray-200 mt-3 text-[1.125rem] max-w-md">
-            Find, compare, and book the best futsal courts near you in seconds.
-          </p>
-          {/* Search Bar */}
-          <div className="mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl">
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+    <div className="ph-page">
+      <section className="ph-hero">
+        <img src={heroImage} alt="Nepal" className="ph-hero__image" />
+        <div className="ph-hero__overlay" aria-hidden />
+        <div className="ph-hero__inner">
+          <span className="ph-kicker">Trusted by players across Nepal</span>
+          <h1 className="ph-title">Book Futsal Courts Across Nepal</h1>
+          <p className="ph-subtitle">Find, compare, and book the best futsal courts near you in seconds.</p>
+
+          <div className="ph-search-row">
+            <div className="ph-search-wrap">
+              <Search className="ph-search-icon" aria-hidden />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by name or location..."
-                className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-white text-foreground shadow-lg"
+                className="ph-input"
               />
             </div>
-            <button className="px-6 py-3.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2 justify-center shadow-lg">
-              <Search className="w-5 h-5" />
+            <button type="button" className="ph-btn-primary">
+              <Search className="w-4 h-4" aria-hidden />
               Search
             </button>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="max-w-7xl mx-auto px-4 -mt-8 relative z-20">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { icon: Zap, label: "Instant Booking", desc: "Book in seconds" },
-            { icon: MapPin, label: "Location Based", desc: "Find nearby courts" },
-            { icon: Shield, label: "Verified Courts", desc: "Quality guaranteed" },
-            { icon: Clock, label: "Real-time Slots", desc: "Live availability" },
-          ].map((f) => (
-            <div key={f.label} className="bg-white rounded-xl p-4 shadow-md border border-border flex items-start gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-                <f.icon className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-[0.875rem]" style={{ fontWeight: 600 }}>{f.label}</p>
-                <p className="text-[0.75rem] text-muted-foreground">{f.desc}</p>
-              </div>
+      <section className="ph-feature-strip">
+        {[
+          { icon: Zap, label: "Instant Booking", desc: "Book in seconds" },
+          { icon: MapPin, label: "Location Based", desc: "Find nearby courts" },
+          { icon: Shield, label: "Verified Courts", desc: "Quality guaranteed" },
+          { icon: Clock, label: "Real-time Slots", desc: "Live availability" },
+        ].map((f) => (
+          <article key={f.label} className="ph-feature-card">
+            <span className="ph-feature-icon-wrap">
+              <f.icon className="ph-feature-icon" aria-hidden />
+            </span>
+            <div>
+              <h3 className="ph-feature-title">{f.label}</h3>
+              <p className="ph-feature-desc">{f.desc}</p>
             </div>
-          ))}
-        </div>
+          </article>
+        ))}
       </section>
 
-      {/* District Filter + Futsals */}
-      <section className="max-w-7xl mx-auto px-4 py-10">
-        <div className="flex items-center justify-between mb-6">
+      <section className="ph-section">
+        <div className="ph-section-head">
           <div>
-            <h2>Popular Futsals Near You</h2>
-            <p className="text-muted-foreground text-[0.875rem]">Discover top-rated futsal courts</p>
+            <h2 className="ph-section-title">Popular Futsals Near You</h2>
+            <p className="ph-section-sub">Discover top-rated futsal courts</p>
           </div>
-          <Link to="/search" className="text-emerald-600 text-[0.875rem] flex items-center gap-1 hover:underline" style={{ fontWeight: 500 }}>
-            View all <ArrowRight className="w-4 h-4" />
+          <Link to="/search" className="ph-inline-link">
+            View all <ArrowRight className="w-4 h-4" aria-hidden />
           </Link>
         </div>
 
-        {/* District Tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+        <div className="ph-chip-row">
           {districts.map((d) => (
             <button
               key={d}
               onClick={() => setSelectedDistrict(d)}
-              className={`px-4 py-2 rounded-full text-[0.875rem] whitespace-nowrap transition-colors ${
-                selectedDistrict === d ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground hover:bg-gray-200"
-              }`}
+              className={`ph-chip ${selectedDistrict === d ? "ph-chip--active" : ""}`}
             >
               {d}
             </button>
           ))}
         </div>
 
-        {/* Grid */}
-        {loading ? <p className="text-muted-foreground mb-4">Loading futsals...</p> : null}
-        {error ? <p className="text-red-600 mb-4">{error}</p> : null}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {loading ? <p className="ph-info">Loading futsals...</p> : null}
+        {error ? <p className="ph-error">{error}</p> : null}
+
+        <div className="ph-grid">
           {filtered.map((f) => (
-            <Link to={`/futsal/${f.id}`} key={f.id} className="group bg-white rounded-xl overflow-hidden border border-border shadow-sm hover:shadow-lg transition-shadow">
-              <div className="relative h-48 overflow-hidden">
-                <img src={f.image} alt={f.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                <div className="absolute top-3 left-3 px-2 py-1 bg-white/90 rounded-md text-[0.75rem]" style={{ fontWeight: 600 }}>
-                  {f.type === "indoor" ? "🏠 Indoor" : "🌿 Outdoor"}
-                </div>
+            <Link to={`/futsal/${f.id}`} key={f.id} className="ph-card">
+              <div className="ph-card-media">
+                <img src={f.image} alt={f.name} className="ph-card-image" />
+                <span className="ph-card-badge">{f.type === "indoor" ? "Indoor" : "Outdoor"}</span>
               </div>
-              <div className="p-4">
-                <h3 className="text-[1rem]">{f.name}</h3>
-                <div className="flex items-center gap-1 text-muted-foreground text-[0.8125rem] mt-1">
-                  <MapPin className="w-3.5 h-3.5" />
+
+              <div className="ph-card-body">
+                <h3 className="ph-card-title">{f.name}</h3>
+                <p className="ph-card-location">
+                  <MapPin className="w-3.5 h-3.5" aria-hidden />
                   {f.location}
-                </div>
-                <div className="flex items-center justify-between mt-3">
-                  <div className="flex items-center gap-1">
-                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                    <span className="text-[0.875rem]" style={{ fontWeight: 600 }}>{f.rating}</span>
-                    <span className="text-muted-foreground text-[0.8125rem]">({f.reviews})</span>
+                </p>
+
+                <div className="ph-card-meta">
+                  <div className="ph-rating">
+                    <Star className="ph-star" aria-hidden />
+                    <span>{f.rating}</span>
+                    <small>({f.reviews})</small>
                   </div>
-                  <div className="flex gap-1">
-                    {f.amenities.slice(0, 3).map((a) => (
-                      <span key={a} className="px-2 py-0.5 bg-gray-100 rounded text-[0.6875rem] text-muted-foreground">{a}</span>
+                  <div className="ph-tags">
+                    {f.amenities.slice(0, 2).map((a) => (
+                      <span key={a}>{a}</span>
                     ))}
                   </div>
                 </div>
@@ -172,39 +225,60 @@ export function PlayerHome() {
         </div>
       </section>
 
-      {/* Map Placeholder */}
-      <section className="max-w-7xl mx-auto px-4 pb-10">
-        <h2 className="mb-4">Explore on Map</h2>
-        <div className="rounded-xl border border-border bg-gray-100 h-80 flex items-center justify-center relative overflow-hidden">
-          <div className="absolute inset-0 opacity-20" style={{ background: "url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"40\"><rect width=\"40\" height=\"40\" fill=\"none\" stroke=\"%23ccc\" stroke-width=\"0.5\"/></svg>') repeat" }} />
-          <div className="text-center z-10">
-            <MapPin className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
-            <p className="text-muted-foreground" style={{ fontWeight: 500 }}>Interactive Map View</p>
-            <p className="text-[0.8125rem] text-muted-foreground">Showing {filtered.length} futsals nearby</p>
-            {/* Simulated pins */}
-            <div className="flex gap-4 mt-4 justify-center">
-              {filtered.slice(0, 3).map((f) => (
-                <div key={f.id} className="flex items-center gap-1 bg-white px-3 py-1.5 rounded-full shadow text-[0.8125rem]">
-                  <MapPin className="w-3 h-3 text-emerald-600" />
-                  {f.name.split(" ")[0]}
-                </div>
-              ))}
+      <section className="ph-section ph-map-section">
+        <h2 className="ph-section-title">Explore on Map</h2>
+        <div className="ph-map-wrap">
+          {mapPoints.length ? (
+            <>
+              <MapContainer center={mapCenter} zoom={12} className="ph-map-canvas" scrollWheelZoom attributionControl={false}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                {mapPoints.map((point) => (
+                  <Marker key={point.id} position={[point.lat, point.lng]} icon={defaultMarkerIcon}>
+                    <Popup className="ph-map-popup--card" autoPanPadding={[18, 18]}>
+                      <div className="ph-map-popup-card">
+                        <div className="ph-map-popup-card__top">
+                          <strong className="ph-map-popup-card__title">{point.name}</strong>
+                          <span className="ph-map-popup-card__badge">{formatDistrictBadge(point.district)}</span>
+                        </div>
+                        <p className="ph-map-popup-card__location">{point.location}</p>
+                        <Link to={`/futsal/${point.id}`} className="ph-map-popup-card__cta">
+                          View futsal <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+                        </Link>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
+              <p className="ph-map-attribution">
+                Map data &copy;{" "}
+                <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+                  OpenStreetMap
+                </a>{" "}
+                contributors
+              </p>
+            </>
+          ) : (
+            <div className="ph-map-content">
+              <MapPin className="ph-map-icon" aria-hidden />
+              <p className="ph-map-title">Map will appear once futsals have coordinates</p>
+              <p className="ph-map-sub">Showing {filtered.length} futsals for this filter.</p>
             </div>
-          </div>
+          )}
         </div>
       </section>
 
-      {/* AI Features Preview */}
-      <section className="bg-gradient-to-r from-emerald-600 to-teal-600 py-14">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 bg-white/20 rounded-full px-4 py-1.5 text-white text-[0.8125rem] mb-3">
-              <Sparkles className="w-4 h-4" /> Coming Soon
-            </div>
-            <h2 className="text-white text-[1.75rem]" style={{ fontWeight: 700 }}>AI-Powered Features</h2>
-            <p className="text-emerald-100 mt-2">Smart features to enhance your futsal experience</p>
+      <section className="ph-ai-section">
+        <div className="ph-ai-inner">
+          <div className="ph-ai-head">
+            <span className="ph-ai-chip">
+              <Sparkles className="w-4 h-4" aria-hidden />
+              Coming Soon
+            </span>
+            <h2 className="ph-ai-title">AI-Powered Features</h2>
+            <p className="ph-ai-sub">Smart features to enhance your futsal experience</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          <div className="ph-ai-grid">
             {[
               { icon: Zap, title: "Smart Slot Suggestions", desc: "AI analyzes your booking patterns and suggests the best available slots." },
               { icon: Users, title: "Find Opponents", desc: "Match with other teams looking for a game at the same time and location." },
@@ -213,11 +287,11 @@ export function PlayerHome() {
               { icon: Clock, title: "Personalized Alerts", desc: "Get notified when your preferred slots become available." },
               { icon: Star, title: "Tournament Recs", desc: "AI-curated tournament and match recommendations based on your skill level." },
             ].map((f) => (
-              <div key={f.title} className="bg-white/10 backdrop-blur rounded-xl p-5 text-white">
-                <f.icon className="w-8 h-8 mb-3 text-emerald-200" />
-                <p className="text-[0.9375rem]" style={{ fontWeight: 600 }}>{f.title}</p>
-                <p className="text-[0.8125rem] text-emerald-100 mt-1">{f.desc}</p>
-              </div>
+              <article key={f.title} className="ph-ai-card">
+                <f.icon className="ph-ai-icon" aria-hidden />
+                <h3>{f.title}</h3>
+                <p>{f.desc}</p>
+              </article>
             ))}
           </div>
         </div>

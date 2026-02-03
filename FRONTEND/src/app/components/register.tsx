@@ -1,5 +1,6 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { ArrowRight, CircleCheckBig, Eye, EyeOff, Lock, Mail, MapPin, Phone, ShieldCheck, Sparkles, User } from "lucide-react";
 import { useAuth } from "../auth/auth-context";
 
 export function RegisterPage() {
@@ -19,14 +20,58 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [existingUser, setExistingUser] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    document.body.classList.add("auth-page");
+    const root = document.getElementById("root");
+    root?.classList.add("auth-page-root");
+    const t = setTimeout(() => setMounted(true), 30);
+
+    return () => {
+      clearTimeout(t);
+      document.body.classList.remove("auth-page");
+      root?.classList.remove("auth-page-root");
+    };
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setExistingUser(false);
 
+    const requiredFields: Array<{ key: keyof typeof form; label: string }> = [
+      { key: "first_name", label: "First name" },
+      { key: "last_name", label: "Last name" },
+      { key: "username", label: "Username" },
+      { key: "email", label: "Email address" },
+      { key: "phone", label: "Phone number" },
+      { key: "password", label: "Password" },
+      { key: "password2", label: "Confirm password" },
+    ];
+
+    for (const item of requiredFields) {
+      if (!String(form[item.key]).trim()) {
+        setError(`${item.label} is required.`);
+        return;
+      }
+    }
+
+    if (form.password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
     if (form.password !== form.password2) {
       setError("Passwords do not match");
+      return;
+    }
+
+    if (!acceptedTerms) {
+      setError("Please accept the Terms of Service and Privacy Policy.");
       return;
     }
 
@@ -46,49 +91,287 @@ export function RegisterPage() {
     }
   }
 
+  const field = <K extends keyof typeof form>(key: K, val: (typeof form)[K]) =>
+    setForm((prev) => ({ ...prev, [key]: val }));
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white border border-border rounded-xl p-6 shadow-sm">
-        <h1 className="text-2xl mb-2" style={{ fontWeight: 700 }}>Create account</h1>
-        <p className="text-sm text-muted-foreground mb-6">Register as player or owner.</p>
+    <div className={`auth-scene ${mounted ? "auth-scene--mounted" : ""}`}>
+      <div className="auth-blob auth-blob--1" aria-hidden />
+      <div className="auth-blob auth-blob--2" aria-hidden />
+      <div className="auth-blob auth-blob--3" aria-hidden />
+      <div className="auth-grid-overlay" aria-hidden />
 
-        <form onSubmit={onSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input className="rounded-lg border px-3 py-2.5" placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
-          <input className="rounded-lg border px-3 py-2.5" type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-          <input className="rounded-lg border px-3 py-2.5" placeholder="First name" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} required />
-          <input className="rounded-lg border px-3 py-2.5" placeholder="Last name" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} required />
-          <input className="rounded-lg border px-3 py-2.5" placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required />
-          <select className="rounded-lg border px-3 py-2.5" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "player" | "owner" })}>
-            <option value="player">Player</option>
-            <option value="owner">Owner</option>
-          </select>
-          <input className="rounded-lg border px-3 py-2.5" type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-          <input className="rounded-lg border px-3 py-2.5" type="password" placeholder="Confirm password" value={form.password2} onChange={(e) => setForm({ ...form, password2: e.target.value })} required />
+      <div className="auth-main">
+        <Link to="/" className="auth-logo-bar" aria-label="FutsalHub home">
+          <span className="auth-logo-mark">
+            <MapPin className="w-[22px] h-[22px]" />
+          </span>
+          <span className="auth-logo-text">
+            Futsal<span>Hub</span>
+          </span>
+        </Link>
 
-          {error ? <p className="text-sm text-red-600 md:col-span-2">{error}</p> : null}
-          {existingUser ? (
-            <div className="md:col-span-2">
-              <button
-                type="button"
-                onClick={() => navigate("/login")}
-                className="text-sm text-emerald-700 underline"
-              >
-                User already registered. Go to login.
-              </button>
+        <div className="auth-card">
+          <div className="auth-card-accent" aria-hidden />
+
+          <div className="auth-tab-row" role="tablist" aria-label="Auth tabs">
+            <Link to="/login" className="auth-tab" role="tab" aria-selected="false">
+              Sign in
+            </Link>
+            <Link to="/register" className="auth-tab active" role="tab" aria-selected="true">
+              Create account
+            </Link>
+          </div>
+
+          <div className="auth-panel">
+            <div className="auth-panel-head">
+              <div className="auth-panel-eyebrow">
+                <span className="auth-eyebrow-dot" aria-hidden /> Get started free
+              </div>
+              <h1 className="auth-panel-title">
+                Join <span>FutsalHub.</span>
+              </h1>
+              <p className="auth-panel-sub">
+                Book courts, find opponents, and build your game.
+              </p>
             </div>
-          ) : null}
 
-          <button
-            disabled={loading}
-            className="md:col-span-2 rounded-lg bg-emerald-600 text-white py-2.5 hover:bg-emerald-700 disabled:opacity-60"
-          >
-            {loading ? "Creating account..." : "Create account"}
-          </button>
-        </form>
+            <form onSubmit={onSubmit} noValidate>
+              <div className="auth-role-section">
+                <p className="auth-role-label" id="role-group-label">I am a</p>
+                <div className="auth-role-row" role="radiogroup" aria-labelledby="role-group-label">
+                  <button
+                    type="button"
+                    className={`auth-role-btn ${form.role === "player" ? "active" : ""}`}
+                    onClick={() => field("role", "player")}
+                    aria-pressed={form.role === "player"}
+                  >
+                    <User className="w-4 h-4" aria-hidden />
+                    Player
+                  </button>
+                  <button
+                    type="button"
+                    className={`auth-role-btn ${form.role === "owner" ? "active" : ""}`}
+                    onClick={() => field("role", "owner")}
+                    aria-pressed={form.role === "owner"}
+                  >
+                    <MapPin className="w-4 h-4" aria-hidden />
+                    Owner
+                  </button>
+                </div>
+              </div>
 
-        <p className="text-sm text-muted-foreground mt-4 text-center">
-          Already have an account? <Link to="/login" className="text-emerald-700">Sign in</Link>
-        </p>
+              <div className="auth-two-col">
+                <div className="auth-field">
+                  <label className="auth-label" htmlFor="reg-first-name">
+                    First name
+                  </label>
+                  <div className="auth-input-wrap">
+                    <span className="auth-input-icon"><User /></span>
+                    <input
+                      id="reg-first-name"
+                      className="auth-input"
+                      placeholder="Enter first name"
+                      value={form.first_name}
+                      onChange={(e) => field("first_name", e.target.value)}
+                      autoComplete="given-name"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label" htmlFor="reg-last-name">
+                    Last name
+                  </label>
+                  <div className="auth-input-wrap">
+                    <input
+                      id="reg-last-name"
+                      className="auth-input no-icon"
+                      placeholder="Enter last name"
+                      value={form.last_name}
+                      onChange={(e) => field("last_name", e.target.value)}
+                      autoComplete="family-name"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="auth-field">
+                <label className="auth-label" htmlFor="reg-username">
+                  Username
+                </label>
+                <div className="auth-input-wrap">
+                  <span className="auth-input-icon"><User /></span>
+                  <input
+                    id="reg-username"
+                    className="auth-input"
+                    placeholder="Choose username"
+                    value={form.username}
+                    onChange={(e) => field("username", e.target.value)}
+                    autoComplete="username"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="auth-field">
+                <label className="auth-label" htmlFor="reg-email">
+                  Email address
+                </label>
+                <div className="auth-input-wrap">
+                  <span className="auth-input-icon"><Mail /></span>
+                  <input
+                    id="reg-email"
+                    className="auth-input"
+                    type="email"
+                    placeholder="Enter email"
+                    value={form.email}
+                    onChange={(e) => field("email", e.target.value)}
+                    autoComplete="email"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="auth-field">
+                <label className="auth-label" htmlFor="reg-phone">
+                  Phone number
+                </label>
+                <div className="auth-input-wrap">
+                  <span className="auth-input-icon"><Phone /></span>
+                  <input
+                    id="reg-phone"
+                    className="auth-input"
+                    placeholder="Enter phone number"
+                    value={form.phone}
+                    onChange={(e) => field("phone", e.target.value)}
+                    autoComplete="tel"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="auth-two-col">
+                <div className="auth-field">
+                  <label className="auth-label" htmlFor="reg-password">
+                    Password
+                  </label>
+                  <div className="auth-input-wrap">
+                    <span className="auth-input-icon"><Lock /></span>
+                    <input
+                      id="reg-password"
+                      className="auth-input has-eye"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter password"
+                      value={form.password}
+                      onChange={(e) => field("password", e.target.value)}
+                      autoComplete="new-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((p) => !p)}
+                      className={`auth-eye-btn ${showPassword ? "active" : ""}`}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff /> : <Eye />}
+                    </button>
+                  </div>
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label" htmlFor="reg-password-confirm">
+                    Confirm
+                  </label>
+                  <div className="auth-input-wrap">
+                    <span className="auth-input-icon"><Lock /></span>
+                    <input
+                      id="reg-password-confirm"
+                      className="auth-input has-eye"
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Confirm password"
+                      value={form.password2}
+                      onChange={(e) => field("password2", e.target.value)}
+                      autoComplete="new-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((p) => !p)}
+                      className={`auth-eye-btn ${showConfirmPassword ? "active" : ""}`}
+                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                    >
+                      {showConfirmPassword ? <EyeOff /> : <Eye />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <label className="auth-check-row">
+                <input
+                  type="checkbox"
+                  className="auth-checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                />
+                <span className="auth-check-text">
+                  I agree to FutsalHub's{" "}
+                  <a href="#" onClick={(e) => e.preventDefault()}>Terms of Service</a>{" "}
+                  and{" "}
+                  <a href="#" onClick={(e) => e.preventDefault()}>Privacy Policy</a>.
+                </span>
+              </label>
+
+              {error && !existingUser ? (
+                <div className="auth-error-box" role="alert">
+                  <span className="auth-error-indicator" aria-hidden />
+                  {error}
+                </div>
+              ) : null}
+
+              {existingUser ? (
+                <div className="auth-error-box" role="alert">
+                  <span className="auth-error-indicator" aria-hidden />
+                  {error}&nbsp;
+                  <button
+                    type="button"
+                    onClick={() => navigate("/login")}
+                    className="auth-label-link"
+                  >
+                    Go to login.
+                  </button>
+                </div>
+              ) : null}
+
+              <button disabled={loading} className="auth-submit" type="submit">
+                <span className="auth-submit-label">
+                  {loading ? (
+                    <>
+                      <span className="auth-spinner" aria-hidden /> Creating account...
+                    </>
+                  ) : (
+                    <>
+                      Create my account <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </span>
+                <span className="auth-submit-shimmer" aria-hidden />
+              </button>
+            </form>
+
+            <p className="auth-footer">
+              Already have an account? <Link to="/login">Sign in</Link>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="auth-trust-strip" aria-hidden>
+        <span className="auth-trust-badge"><Sparkles /> 200+ venues</span>
+        <span className="auth-sep" />
+        <span className="auth-trust-badge"><ShieldCheck /> Secure payments</span>
+        <span className="auth-sep" />
+        <span className="auth-trust-badge"><CircleCheckBig /> Free to join</span>
       </div>
     </div>
   );

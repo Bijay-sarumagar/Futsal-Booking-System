@@ -56,9 +56,9 @@ export function SearchPage() {
     .sort((a, b) => sortBy === "rating" ? b.rating - a.rating : sortBy === "price-low" ? a.price - b.price : b.price - a.price);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className="w-full py-6 md:py-8">
       <h1 className="mb-1">Find Futsal Courts</h1>
-      <p className="text-muted-foreground mb-6">Search and filter futsals across Nepal</p>
+      <p className="text-muted-foreground mb-7">Search and filter futsals across Nepal</p>
 
       {/* Search + Filter Bar */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -66,10 +66,10 @@ export function SearchPage() {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, location..." className="w-full pl-12 pr-4 py-3 rounded-xl border border-border bg-input-background" />
         </div>
-        <button onClick={() => setShowFilters(!showFilters)} className="px-4 py-3 border border-border rounded-xl flex items-center gap-2 hover:bg-muted">
+        <button onClick={() => setShowFilters(!showFilters)} className="px-4 py-3 border border-border rounded-xl bg-card flex items-center gap-2 hover:bg-muted transition-colors">
           <SlidersHorizontal className="w-4 h-4" /> Filters
         </button>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="px-4 py-3 border border-border rounded-xl bg-white">
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-[148px] px-4 py-3 border border-border rounded-xl bg-card">
           <option value="rating">Top Rated</option>
           <option value="price-low">Price: Low to High</option>
           <option value="price-high">Price: High to Low</option>
@@ -78,7 +78,7 @@ export function SearchPage() {
 
       {/* Filters Panel */}
       {showFilters && (
-        <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-border">
+        <div className="mb-6 p-4 bg-card rounded-xl border border-border shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h4>Filters</h4>
             <button onClick={() => setShowFilters(false)}><X className="w-4 h-4" /></button>
@@ -88,7 +88,7 @@ export function SearchPage() {
               <label className="text-[0.8125rem] text-muted-foreground mb-2 block">Court Type</label>
               <div className="flex gap-2">
                 {(["all", "indoor", "outdoor"] as const).map((t) => (
-                  <button key={t} onClick={() => setTypeFilter(t)} className={`px-3 py-1.5 rounded-lg text-[0.8125rem] capitalize ${typeFilter === t ? "bg-emerald-600 text-white" : "bg-white border border-border"}`}>
+                  <button key={t} onClick={() => setTypeFilter(t)} className={`px-3 py-1.5 rounded-lg text-[0.8125rem] capitalize transition-colors ${typeFilter === t ? "bg-primary text-primary-foreground" : "bg-card border border-border hover:bg-muted"}`}>
                     {t}
                   </button>
                 ))}
@@ -96,13 +96,13 @@ export function SearchPage() {
             </div>
             <div>
               <label className="text-[0.8125rem] text-muted-foreground mb-2 block">Max Price: Rs. {priceRange[1]}</label>
-              <input type="range" min={500} max={2000} step={100} value={priceRange[1]} onChange={(e) => setPriceRange([0, +e.target.value])} className="w-full accent-emerald-600" />
+              <input type="range" min={500} max={2000} step={100} value={priceRange[1]} onChange={(e) => setPriceRange([0, +e.target.value])} className="w-full accent-primary" />
             </div>
             <div>
               <label className="text-[0.8125rem] text-muted-foreground mb-2 block">Min Rating</label>
               <div className="flex gap-1">
                 {[0, 3, 3.5, 4, 4.5].map((r) => (
-                  <button key={r} onClick={() => setRatingFilter(r)} className={`px-3 py-1.5 rounded-lg text-[0.8125rem] ${ratingFilter === r ? "bg-emerald-600 text-white" : "bg-white border border-border"}`}>
+                  <button key={r} onClick={() => setRatingFilter(r)} className={`px-3 py-1.5 rounded-lg text-[0.8125rem] transition-colors ${ratingFilter === r ? "bg-primary text-primary-foreground" : "bg-card border border-border hover:bg-muted"}`}>
                     {r === 0 ? "Any" : `${r}+`}
                   </button>
                 ))}
@@ -112,15 +112,15 @@ export function SearchPage() {
         </div>
       )}
 
-      <p className="text-muted-foreground text-[0.875rem] mb-4">{loading ? "Loading futsals..." : `${filtered.length} futsals found`}</p>
+      {loading ? <p className="text-muted-foreground text-[0.875rem] mb-4">Loading futsals...</p> : null}
 
       {/* Results */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map((f) => (
-          <Link to={`/futsal/${f.id}`} key={f.id} className="group bg-white rounded-xl overflow-hidden border border-border shadow-sm hover:shadow-lg transition-shadow">
+          <Link to={`/futsal/${f.id}`} key={f.id} className="group bg-card rounded-xl overflow-hidden border border-border shadow-sm hover:shadow-lg transition-all hover:-translate-y-0.5">
             <div className="relative h-48 overflow-hidden">
               <img src={f.image} alt={f.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-              <div className="absolute top-3 left-3 px-2 py-1 bg-white/90 rounded-md text-[0.75rem]" style={{ fontWeight: 600 }}>
+              <div className="absolute top-3 left-3 px-2 py-1 bg-card/90 rounded-md text-[0.75rem]" style={{ fontWeight: 600 }}>
                 {f.type === "indoor" ? "🏠 Indoor" : "🌿 Outdoor"}
               </div>
             </div>
@@ -137,7 +137,7 @@ export function SearchPage() {
                 </div>
                 <div className="flex gap-1">
                   {f.amenities.slice(0, 2).map((a) => (
-                    <span key={a} className="px-2 py-0.5 bg-gray-100 rounded text-[0.6875rem] text-muted-foreground">{a}</span>
+                    <span key={a} className="px-2 py-0.5 bg-muted rounded text-[0.6875rem] text-muted-foreground">{a}</span>
                   ))}
                 </div>
               </div>

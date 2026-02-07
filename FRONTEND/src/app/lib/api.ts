@@ -3,7 +3,15 @@ const API_BASE_URL =
   env?.VITE_API_URL ||
   `${window.location.protocol}//${window.location.hostname}:8000`;
 
-const MEDIA_FIELD_KEYS = new Set(["profile_picture", "image"]);
+const MEDIA_FIELD_KEYS = new Set([
+  "profile_picture",
+  "image",
+  "user_profile_picture",
+  "owner_profile_picture",
+  "esewa_qr_image",
+  "fonepay_qr_image",
+  "payment_proof_image",
+]);
 
 function toAbsoluteMediaUrl(value: string): string {
   if (!value) return value;
@@ -66,6 +74,9 @@ export interface FutsalItem {
   latitude: string | null;
   longitude: string | null;
   description: string | null;
+  esewa_qr_image: string | null;
+  fonepay_qr_image: string | null;
+  preferred_qr_provider: "esewa" | "fonepay";
   approval_status: "pending" | "approved" | "rejected";
   created_at: string;
 }
@@ -102,10 +113,23 @@ export interface OwnerAdminItem {
   first_name: string;
   last_name: string;
   phone: string;
+  profile_picture: string | null;
   role: "owner";
   status: "active" | "inactive" | "suspended";
   created_at: string;
   updated_at: string;
+}
+
+export interface AdminUserItem {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  profile_picture: string | null;
+  role: "player" | "owner" | "admin";
+  status: "active" | "inactive" | "suspended";
+  created_at: string;
 }
 
 export interface OwnerVerificationSummary {
@@ -136,6 +160,9 @@ export interface BookingItem {
   id: number;
   user: number;
   user_name: string;
+  user_profile_picture: string | null;
+  owner_name: string;
+  owner_profile_picture: string | null;
   slot: number;
   slot_details: {
     slot_date: string;
@@ -151,7 +178,65 @@ export interface BookingItem {
   booking_date: string;
   booking_status: "confirmed" | "cancelled" | "completed" | "no_show";
   payment_status: "pending" | "completed" | "failed" | "refunded";
+  payment_proof_image?: string | null;
   created_at: string;
+}
+
+export interface PaymentItem {
+  id: number;
+  booking: number;
+  booking_details: {
+    booking_id: number;
+    user: string;
+    futsal: string;
+  };
+  amount: string;
+  payment_method: string;
+  payment_status: "pending" | "completed" | "failed" | "refunded";
+  transaction_id: string | null;
+  payment_date: string;
+  created_at: string;
+}
+
+export interface OpponentPostItem {
+  id: number;
+  user: number;
+  user_name: string;
+  user_profile_picture: string | null;
+  matched_with: number | null;
+  matched_with_name: string | null;
+  matched_with_profile_picture: string | null;
+  location: string;
+  preferred_date: string;
+  preferred_start_time: string;
+  preferred_end_time: string;
+  skill_level: "casual" | "intermediate" | "advanced";
+  notes: string;
+  status: "open" | "matched" | "closed";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationItem {
+  id: number;
+  user: number;
+  message: string;
+  notification_type: "booking" | "payment" | "alert" | "review" | "opponent" | "system";
+  related_booking: number | null;
+  is_read: boolean;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface AiChatHistoryItem {
+  role: "assistant" | "user";
+  content: string;
+}
+
+export interface AiChatResponse {
+  reply: string;
+  model: string;
+  provider: string;
 }
 
 interface ApiRequestOptions extends RequestInit {
@@ -176,16 +261,33 @@ async function request<T>(path: string, options: ApiRequestOptions = {}): Promis
     credentials: "include",
   });
 
+  const rawText = await response.text();
   const isJson = response.headers.get("content-type")?.includes("application/json");
-  const data = isJson ? await response.json() : null;
+  let data: unknown = null;
+
+  if (rawText) {
+    if (isJson) {
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        data = null;
+      }
+    } else {
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        data = null;
+      }
+    }
+  }
 
   if (!response.ok) {
-    let message = "Request failed";
+    let message = `Request failed (HTTP ${response.status})`;
 
-    if (data?.detail) {
-      message = data.detail;
-    } else if (data?.message) {
-      message = data.message;
+    if (data && typeof data === "object" && "detail" in data && typeof (data as { detail?: unknown }).detail === "string") {
+      message = (data as { detail: string }).detail;
+    } else if (data && typeof data === "object" && "message" in data && typeof (data as { message?: unknown }).message === "string") {
+      message = (data as { message: string }).message;
     } else if (data && typeof data === "object") {
       const firstEntry = Object.entries(data)[0];
       if (firstEntry) {
@@ -195,6 +297,11 @@ async function request<T>(path: string, options: ApiRequestOptions = {}): Promis
         } else {
           message = `${field}: ${String(value)}`;
         }
+      }
+    } else if (rawText) {
+      const compact = rawText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      if (compact) {
+        message = compact.slice(0, 220);
       }
     }
 
@@ -270,6 +377,17 @@ export async function updateMe(
   });
 }
 
+export async function changePassword(
+  payload: { old_password: string; new_password: string; confirm_password: string },
+  token?: string,
+): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/users/change_password/", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getFutsals(): Promise<FutsalItem[]> {
   const data = await request<PaginatedResponse<FutsalItem> | FutsalItem[]>("/api/futsals/", {
     method: "GET",
@@ -291,18 +409,27 @@ export async function getMyFutsals(token?: string): Promise<FutsalItem[]> {
 }
 
 export async function createFutsal(
-  payload: Pick<FutsalItem, "futsal_name" | "location" | "description" | "amenities"> & { latitude?: string; longitude?: string; image?: File | null },
+  payload: Pick<FutsalItem, "futsal_name" | "location" | "description" | "amenities" | "preferred_qr_provider"> & {
+    latitude?: string;
+    longitude?: string;
+    image?: File | null;
+    esewa_qr_image?: File | null;
+    fonepay_qr_image?: File | null;
+  },
   token?: string,
 ): Promise<FutsalItem> {
-  if (payload.image) {
+  if (payload.image || payload.esewa_qr_image || payload.fonepay_qr_image) {
     const form = new FormData();
     form.append("futsal_name", payload.futsal_name);
     form.append("location", payload.location);
     if (payload.description) form.append("description", payload.description);
     form.append("amenities", JSON.stringify(payload.amenities || []));
+    form.append("preferred_qr_provider", payload.preferred_qr_provider);
     if (payload.latitude) form.append("latitude", payload.latitude);
     if (payload.longitude) form.append("longitude", payload.longitude);
-    form.append("image", payload.image);
+    if (payload.image) form.append("image", payload.image);
+    if (payload.esewa_qr_image) form.append("esewa_qr_image", payload.esewa_qr_image);
+    if (payload.fonepay_qr_image) form.append("fonepay_qr_image", payload.fonepay_qr_image);
 
     return request<FutsalItem>("/api/futsals/", {
       method: "POST",
@@ -320,13 +447,44 @@ export async function createFutsal(
 
 export async function updateFutsal(
   futsalId: number,
-  payload: Partial<Pick<FutsalItem, "futsal_name" | "location" | "description" | "amenities" | "latitude" | "longitude">>,
+  payload: Partial<Pick<FutsalItem, "futsal_name" | "location" | "description" | "amenities" | "latitude" | "longitude" | "preferred_qr_provider">> & {
+    image?: File | null;
+    esewa_qr_image?: File | null;
+    fonepay_qr_image?: File | null;
+  },
   token?: string,
 ): Promise<FutsalItem> {
+  if (payload.image || payload.esewa_qr_image || payload.fonepay_qr_image) {
+    const form = new FormData();
+    if (payload.futsal_name !== undefined) form.append("futsal_name", payload.futsal_name);
+    if (payload.location !== undefined) form.append("location", payload.location);
+    if (payload.description !== undefined) form.append("description", payload.description || "");
+    if (payload.amenities !== undefined) form.append("amenities", JSON.stringify(payload.amenities || []));
+    if (payload.latitude !== undefined && payload.latitude !== null) form.append("latitude", payload.latitude);
+    if (payload.longitude !== undefined && payload.longitude !== null) form.append("longitude", payload.longitude);
+    if (payload.preferred_qr_provider !== undefined) form.append("preferred_qr_provider", payload.preferred_qr_provider);
+    if (payload.image) form.append("image", payload.image);
+    if (payload.esewa_qr_image) form.append("esewa_qr_image", payload.esewa_qr_image);
+    if (payload.fonepay_qr_image) form.append("fonepay_qr_image", payload.fonepay_qr_image);
+
+    return request<FutsalItem>(`/api/futsals/${futsalId}/`, {
+      method: "PATCH",
+      token,
+      body: form,
+    });
+  }
+
   return request<FutsalItem>(`/api/futsals/${futsalId}/`, {
     method: "PATCH",
     token,
     body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteFutsal(futsalId: number, token?: string): Promise<void> {
+  await request<void>(`/api/futsals/${futsalId}/`, {
+    method: "DELETE",
+    token,
   });
 }
 
@@ -426,6 +584,13 @@ export async function getMyBookings(token?: string): Promise<BookingItem[]> {
   return Array.isArray(data) ? data : data.results;
 }
 
+export async function getBookingById(bookingId: number, token?: string): Promise<BookingItem> {
+  return request<BookingItem>(`/api/bookings/${bookingId}/`, {
+    method: "GET",
+    token,
+  });
+}
+
 export async function createBooking(slotId: number, token?: string): Promise<BookingItem> {
   return request<BookingItem>("/api/bookings/", {
     method: "POST",
@@ -474,6 +639,25 @@ export async function getOwnersForAdmin(token?: string): Promise<OwnerAdminItem[
   });
 }
 
+export async function getUsersForAdmin(token?: string): Promise<AdminUserItem[]> {
+  return request<AdminUserItem[]>("/api/users/admin_users/", {
+    method: "GET",
+    token,
+  });
+}
+
+export async function setUserStatusForAdmin(
+  userId: number,
+  userStatus: 'active' | 'inactive',
+  token?: string,
+): Promise<{ status: string; user: AdminUserItem }> {
+  return request<{ status: string; user: AdminUserItem }>(`/api/users/${userId}/set_user_status/`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ status: userStatus }),
+  });
+}
+
 export async function setOwnerStatus(
   ownerId: number,
   ownerStatus: "active" | "inactive" | "suspended",
@@ -500,6 +684,71 @@ export async function deleteOwnerByAdmin(ownerId: number, token?: string): Promi
   });
 }
 
+export async function initiateEsewaPayment(bookingId: number, token?: string): Promise<{
+  gateway: "esewa";
+  payment_url: string;
+  fields: Record<string, string>;
+}> {
+  return request<{ gateway: "esewa"; payment_url: string; fields: Record<string, string> }>("/api/payments/esewa/initiate/", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ booking_id: bookingId }),
+  });
+}
+
+export async function verifyEsewaPayment(
+  payload: { booking_id: number; data?: string; status?: string; ref_id?: string },
+  token?: string,
+): Promise<{ status: string; payment_status: "completed" | "failed" }> {
+  return request<{ status: string; payment_status: "completed" | "failed" }>("/api/payments/esewa/verify/", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function confirmOwnerQrPayment(
+  payload: { booking_id: number; transaction_id?: string },
+  token?: string,
+): Promise<{ status: string; payment_status: "completed" }> {
+  return request<{ status: string; payment_status: "completed" }>("/api/payments/owner-qr/confirm/", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function uploadPaymentProof(
+  payload: { booking_id: number; payment_proof_image: File },
+  token?: string,
+): Promise<{ status: string; payment_status: "pending" }> {
+  const form = new FormData();
+  form.append("booking_id", String(payload.booking_id));
+  form.append("payment_proof_image", payload.payment_proof_image);
+
+  return request<{ status: string; payment_status: "pending" }>("/api/payments/upload-proof/", {
+    method: "POST",
+    token,
+    body: form,
+  });
+}
+
+export async function refundBookingPayment(bookingId: number, token?: string): Promise<{ status: string; payment_status: "refunded" }> {
+  return request<{ status: string; payment_status: "refunded" }>("/api/payments/refund/", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ booking_id: bookingId }),
+  });
+}
+
+export async function getPayments(token?: string): Promise<PaymentItem[]> {
+  const data = await request<PaginatedResponse<PaymentItem> | PaymentItem[]>("/api/payments/", {
+    method: "GET",
+    token,
+  });
+  return Array.isArray(data) ? data : data.results;
+}
+
 export async function getReviews(params: { futsal?: number; user?: number } = {}, token?: string): Promise<ReviewItem[]> {
   const query = new URLSearchParams();
   if (params.futsal) query.set("futsal", String(params.futsal));
@@ -520,5 +769,97 @@ export async function createReview(
     method: "POST",
     token,
     body: JSON.stringify(payload),
+  });
+}
+
+export async function updateReview(
+  reviewId: number,
+  payload: { rating: number; comment?: string },
+  token?: string,
+): Promise<ReviewItem> {
+  return request<ReviewItem>(`/api/reviews/${reviewId}/`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteReview(reviewId: number, token?: string): Promise<void> {
+  await request<void>(`/api/reviews/${reviewId}/`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function getOpponentPosts(token?: string): Promise<OpponentPostItem[]> {
+  return request<OpponentPostItem[]>("/api/bookings/opponent-posts/", {
+    method: "GET",
+    token,
+  });
+}
+
+export async function createOpponentPost(
+  payload: Pick<OpponentPostItem, "location" | "preferred_date" | "preferred_start_time" | "preferred_end_time" | "skill_level" | "notes">,
+  token?: string,
+): Promise<OpponentPostItem> {
+  return request<OpponentPostItem>("/api/bookings/opponent-posts/", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function joinOpponentPost(postId: number, token?: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/bookings/opponent-posts/${postId}/join/`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function closeOpponentPost(postId: number, token?: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/bookings/opponent-posts/${postId}/close/`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function leaveOpponentPost(postId: number, token?: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/bookings/opponent-posts/${postId}/leave/`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function getMyNotifications(token?: string): Promise<NotificationItem[]> {
+  const data = await request<PaginatedResponse<NotificationItem> | NotificationItem[]>("/api/notifications/", {
+    method: "GET",
+    token,
+  });
+  return Array.isArray(data) ? data : data.results;
+}
+
+export async function markNotificationAsRead(notificationId: number, token?: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/notifications/${notificationId}/mark_as_read/`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function markAllNotificationsAsRead(token?: string): Promise<{ status: string }> {
+  return request<{ status: string }>("/api/notifications/mark_all_as_read/", {
+    method: "POST",
+    token,
+  });
+}
+
+export async function askAiAssistant(
+  message: string,
+  history: AiChatHistoryItem[] = [],
+  token?: string,
+): Promise<AiChatResponse> {
+  return request<AiChatResponse>("/api/ai/chat/", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ message, history }),
   });
 }

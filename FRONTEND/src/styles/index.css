@@ -1,3 +1,14 @@
 @import './fonts.css';
+@import './auth.css';
 @import './tailwind.css';
 @import './theme.css';
+@import './app-shell.css';
+@import './ui-refresh.css';
+@import './owner-layout.css';
+
+/* Page rhythm: most routes opt in via their own containers; this keeps root scroll smooth without affecting layout logic */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+}

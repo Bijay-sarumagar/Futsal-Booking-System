@@ -2,7 +2,7 @@
 
 A comprehensive web platform for booking futsal courts online, similar to Airbnb but for futsals in Nepal and beyond.
 
-## 📋 Quick Setup
+## Quick Setup
 
 ### Prerequisites
 - Python 3.9+
@@ -21,7 +21,7 @@ FutsalHub/
 └── README.md
 ```
 
-## 🚀 Backend Setup (Django)
+## Backend Setup (Django)
 
 ### 1. Navigate to backend directory
 ```bash
@@ -72,7 +72,7 @@ Backend will be available at: `http://localhost:8000`
 
 ---
 
-## 🎨 Frontend Setup (React)
+## Frontend Setup (React)
 
 ### 1. Navigate to frontend directory
 ```bash
@@ -107,7 +107,7 @@ Frontend will be available at: `http://localhost:5173`
 
 ---
 
-## 📚 API Documentation
+## API Documentation
 
 See [DOCS/API.md](DOCS/API.md) for complete API documentation.
 
@@ -124,7 +124,7 @@ See [DOCS/API.md](DOCS/API.md) for complete API documentation.
 
 ---
 
-## 🗄️ Database Schema
+## Database Schema
 
 The project uses a fully normalized (3NF) PostgreSQL database with the following main tables:
 - `User` - User accounts (players, owners, admins)
@@ -139,7 +139,7 @@ See [DOCS/DATABASE_SCHEMA.md](DOCS/DATABASE_SCHEMA.md) for detailed schema.
 
 ---
 
-## 👥 User Roles
+## User Roles
 
 ### Player
 - Search & book futsal courts
@@ -161,7 +161,7 @@ See [DOCS/DATABASE_SCHEMA.md](DOCS/DATABASE_SCHEMA.md) for detailed schema.
 
 ---
 
-## 🔐 Authentication
+## Authentication
 
 The application uses JWT (JSON Web Tokens) for authentication.
 
@@ -173,7 +173,7 @@ The application uses JWT (JSON Web Tokens) for authentication.
 
 ---
 
-## 📱 Features
+## Features
 
 ### Current Phase (MVP)
 - [x] User authentication
@@ -194,7 +194,7 @@ The application uses JWT (JSON Web Tokens) for authentication.
 
 ---
 
-## 🛠️ Development
+## Development
 
 ### Running Tests
 ```bash
@@ -220,18 +220,18 @@ npm run build
 
 ---
 
-## 📝 License
+## License
 
 This project is for educational purposes (FYP).
 
 ---
 
-## 👨‍💻 Developer
+## Developer
 
 **Bijay** - FYP Project
 
 ---
 
-## 🆘 Support
+## Support
 
 For issues or questions, please refer to the documentation or create an issue on GitHub.

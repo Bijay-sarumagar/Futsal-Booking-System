@@ -1,0 +1,108 @@
+.app-shell {
+  font-family: var(--auth-font-b);
+}
+
+.app-shell__header {
+  border-bottom-color: var(--auth-border) !important;
+  background: color-mix(in oklab, var(--auth-s1) 86%, white) !important;
+}
+
+.app-shell__header-inner {
+  width: min(1560px, calc(100% - 2rem));
+  margin-inline: auto;
+}
+
+.app-shell__brand {
+  transition: transform 0.18s ease;
+}
+
+.app-shell__brand:hover {
+  transform: translateY(-1px);
+}
+
+.app-shell__brand-mark {
+  border-radius: 11px !important;
+  background: var(--auth-teal) !important;
+  box-shadow: 0 6px 16px var(--auth-teal-glow);
+}
+
+.app-shell__brand-text {
+  font-family: var(--auth-font-h);
+  font-size: 1.24rem;
+  letter-spacing: -0.02em;
+  color: var(--auth-t1);
+}
+
+.app-shell__desktop-nav {
+  background: var(--auth-s2);
+  border: 1px solid var(--auth-border);
+  border-radius: 999px;
+  padding: 0.22rem;
+}
+
+.app-shell__nav-link {
+  border-radius: 999px !important;
+}
+
+.app-shell__nav-link--active {
+  background: var(--auth-teal) !important;
+  color: #fff !important;
+}
+
+.app-shell__icon-btn {
+  border-radius: 11px !important;
+}
+
+.app-shell__icon-btn:hover {
+  background: var(--auth-s3) !important;
+}
+
+.app-shell__role-badge {
+  border-color: var(--auth-border) !important;
+  background: var(--auth-s2) !important;
+}
+
+.app-shell__avatar {
+  background: var(--auth-teal) !important;
+  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.24);
+}
+
+.app-shell__signout {
+  border-color: var(--auth-border) !important;
+  background: var(--auth-s1);
+}
+
+.app-shell__signout:hover {
+  background: var(--auth-s3) !important;
+}
+
+.app-shell__mobile-nav {
+  background: var(--auth-s1) !important;
+  border-top-color: var(--auth-border) !important;
+}
+
+.app-shell__mobile-link {
+  border-radius: 12px !important;
+}
+
+.app-shell__mobile-link--active {
+  background: var(--auth-teal-faint) !important;
+  color: var(--auth-teal-dk) !important;
+}
+
+.app-shell__footer {
+  background: linear-gradient(160deg, #0f1721 0%, #12222a 50%, #12262e 100%) !important;
+}
+
+.app-shell__footer-grid {
+  width: min(1560px, calc(100% - 2rem));
+  margin-inline: auto;
+}
+
+.app-shell__footer-logo {
+  font-family: var(--auth-font-h);
+}
+
+.app-shell__footer-bottom {
+  border-top-color: rgba(255, 255, 255, 0.16) !important;
+}

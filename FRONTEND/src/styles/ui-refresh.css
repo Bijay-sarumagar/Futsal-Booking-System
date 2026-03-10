@@ -1,0 +1,216 @@
+.app-shell {
+  background:
+    radial-gradient(circle at 92% 8%, rgba(5, 150, 105, 0.1) 0%, transparent 36%),
+    radial-gradient(circle at 6% 38%, rgba(249, 115, 22, 0.08) 0%, transparent 34%),
+    linear-gradient(180deg, var(--auth-s2) 0%, var(--auth-night) 44%, var(--auth-night) 100%);
+  color: var(--auth-t1);
+  font-family: var(--auth-font-b);
+}
+
+.app-shell main {
+  position: relative;
+}
+
+.app-shell .app-shell__player-content {
+  width: min(1360px, calc(100% - 1.1rem));
+  margin-inline: auto;
+}
+
+.app-shell main > * {
+  animation: ui-page-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-shell h1,
+.app-shell h2,
+.app-shell h3,
+.app-shell h4,
+.app-shell .app-shell__footer-logo {
+  font-family: var(--auth-font-h);
+  letter-spacing: -0.02em;
+}
+
+.app-shell :is(div, section, aside, article, form)[class*="bg-white"][class*="border"][class*="rounded"],
+.app-shell :is(div, section, aside, article, form)[class*="bg-card"][class*="border"][class*="rounded"] {
+  background: color-mix(in oklab, var(--auth-s1) 88%, white);
+  border-color: var(--auth-border);
+  box-shadow:
+    0 2px 4px rgba(16, 24, 40, 0.04),
+    0 12px 30px rgba(16, 24, 40, 0.07),
+    0 0 0 1px rgba(255, 255, 255, 0.58) inset;
+  transition: border-color 0.2s ease, box-shadow 0.22s ease, transform 0.22s ease;
+}
+
+.app-shell :is(div, section, aside, article)[class*="shadow-sm"][class*="rounded"]:hover {
+  border-color: var(--auth-border-h);
+  box-shadow:
+    0 2px 4px rgba(16, 24, 40, 0.05),
+    0 16px 34px rgba(16, 24, 40, 0.09),
+    0 0 0 1px rgba(255, 255, 255, 0.62) inset;
+}
+
+.app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.app-shell select,
+.app-shell textarea {
+  background: var(--auth-s2);
+  border-color: var(--auth-border);
+  border-radius: 12px;
+  color: var(--auth-t1);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+.app-shell select:focus,
+.app-shell textarea:focus {
+  border-color: var(--auth-teal);
+  box-shadow: 0 0 0 3px var(--auth-teal-glow);
+  background: #fff;
+  outline: none;
+}
+
+.app-shell .bg-emerald-600,
+.app-shell .bg-primary {
+  background-color: var(--auth-teal) !important;
+}
+
+.app-shell .hover\:bg-emerald-700:hover,
+.app-shell .hover\:bg-primary\/90:hover,
+.app-shell .hover\:opacity-90:hover {
+  background-color: var(--auth-teal-dk) !important;
+  opacity: 1 !important;
+}
+
+.app-shell .text-emerald-600,
+.app-shell .text-emerald-700,
+.app-shell .text-primary {
+  color: var(--auth-teal-dk) !important;
+}
+
+.app-shell .bg-emerald-50,
+.app-shell .bg-primary\/5,
+.app-shell .bg-primary\/10 {
+  background: var(--auth-teal-faint) !important;
+}
+
+.app-shell .border-emerald-200,
+.app-shell .border-emerald-300,
+.app-shell .border-primary\/25 {
+  border-color: color-mix(in oklab, var(--auth-teal) 34%, white) !important;
+}
+
+.app-shell .fixed.inset-0[class*="z-"] {
+  backdrop-filter: blur(5px);
+  animation: ui-overlay-enter 0.2s ease;
+}
+
+.app-shell .fixed.inset-0[class*="z-"] > [class*="bg-white"][class*="rounded"],
+.app-shell .fixed.inset-0[class*="z-"] > [class*="bg-card"][class*="rounded"] {
+  background: color-mix(in oklab, var(--auth-s1) 92%, white);
+  border-color: var(--auth-border);
+  box-shadow:
+    0 4px 10px rgba(16, 24, 40, 0.08),
+    0 28px 56px rgba(16, 24, 40, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.62) inset;
+  animation: ui-modal-enter 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Keep Leaflet layers below sticky app header/navigation. */
+.app-shell .leaflet-container,
+.app-shell .leaflet-pane,
+.app-shell .leaflet-top,
+.app-shell .leaflet-bottom,
+.app-shell .leaflet-control {
+  z-index: 20;
+}
+
+.app-shell table thead tr {
+  background: color-mix(in oklab, var(--auth-s3) 92%, white);
+}
+
+.app-shell table tbody tr {
+  transition: background-color 0.14s ease;
+}
+
+.app-shell table tbody tr:hover {
+  background: color-mix(in oklab, var(--auth-teal-faint) 60%, white);
+}
+
+.app-shell .app-shell__notice-popover {
+  border-radius: 18px;
+  border-color: var(--auth-border);
+  background: color-mix(in oklab, var(--auth-s1) 94%, white);
+  box-shadow:
+    0 4px 10px rgba(16, 24, 40, 0.07),
+    0 22px 40px rgba(16, 24, 40, 0.12);
+}
+
+.app-shell .app-shell__notice-item {
+  transition: background-color 0.18s ease, transform 0.18s ease;
+}
+
+.app-shell .app-shell__notice-item:hover {
+  transform: translateX(1px);
+}
+
+.app-shell .app-shell__side-panel {
+  background: color-mix(in oklab, var(--auth-s1) 90%, white);
+  border-color: var(--auth-border);
+  box-shadow: 0 14px 34px rgba(16, 24, 40, 0.08);
+}
+
+@keyframes ui-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ui-overlay-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ui-modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-ui-overlay-enter {
+  animation: ui-overlay-enter 0.22s ease forwards;
+}
+
+.animate-ui-modal-enter {
+  animation: ui-modal-enter 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell main > *,
+  .app-shell .fixed.inset-0[class*="z-"] > [class*="bg-white"][class*="rounded"],
+  .app-shell .fixed.inset-0[class*="z-"] > [class*="bg-card"][class*="rounded"] {
+    animation: none;
+  }
+
+  .app-shell .fixed.inset-0[class*="z-"] {
+    animation: none;
+  }
+
+  .app-shell * {
+    transition-duration: 0.01ms !important;
+  }
+}

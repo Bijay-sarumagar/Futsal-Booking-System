@@ -1,0 +1,48 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+BACKEND/venv/
+BACKEND/.venv/
+
+# Django static/media
+BACKEND/media/
+BACKEND/staticfiles/
+
+# Node
+node_modules/
+FRONTEND/node_modules/
+FRONTEND/dist/
+
+# Build artifacts
+build/
+dist/
+coverage/

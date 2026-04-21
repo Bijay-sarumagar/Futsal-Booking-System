@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router";
 import { MapPin, Menu, X, Bell, User, Home, Search, LayoutDashboard, Shield, LogOut, Megaphone, Swords, CalendarCheck2, CreditCard, Sparkles, Bot } from "lucide-react";
+import futsalLogo from "@/assets/images/futsalhub-logo.png";
 import { Toaster } from "sonner";
 import { useAuth } from "../auth/auth-context";
 import { getFutsals, getMyBookings, getMyNotifications, getOwnersForAdmin, getUsersForAdmin, markAllNotificationsAsRead, markNotificationAsRead } from "../lib/api";
@@ -362,9 +363,7 @@ export function Layout() {
             to={roleHome}
             className="app-shell__brand flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
           >
-            <div className="app-shell__brand-mark w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-sm">
-              <MapPin className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <img src={futsalLogo} alt="FutsalHub logo" className="w-12 h-12 object-contain" />
             <span className="app-shell__brand-text text-lg font-semibold text-foreground tracking-tight">FutsalHub</span>
           </Link>
 

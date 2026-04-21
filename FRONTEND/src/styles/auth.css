@@ -144,21 +144,25 @@ body.auth-page,
 }
 
 .auth-logo-mark {
-  width: 38px;
-  height: 38px;
-  background: var(--auth-teal);
-  border-radius: 11px;
+  width: 46px;
+  height: 46px;
+  background: transparent;
+  border-radius: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.3);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: none;
+  transition: transform 0.2s ease;
+}
+
+.auth-logo-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .auth-logo-bar:hover .auth-logo-mark {
-  transform: scale(1.08) rotate(-4deg);
-  box-shadow: 0 6px 20px rgba(5, 150, 105, 0.38);
+  transform: scale(1.04);
 }
 
 .auth-logo-text {

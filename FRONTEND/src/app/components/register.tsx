@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { ArrowRight, CircleCheckBig, Eye, EyeOff, Lock, Mail, MapPin, Phone, ShieldCheck, Sparkles, User } from "lucide-react";
+import futsalLogo from "@/assets/images/futsalhub-logo.png";
 import { useAuth } from "../auth/auth-context";
 
 export function RegisterPage() {
@@ -104,7 +105,7 @@ export function RegisterPage() {
       <div className="auth-main">
         <Link to="/" className="auth-logo-bar" aria-label="FutsalHub home">
           <span className="auth-logo-mark">
-            <MapPin className="w-[22px] h-[22px]" />
+            <img src={futsalLogo} alt="FutsalHub logo" className="w-11 h-11 object-contain" />
           </span>
           <span className="auth-logo-text">
             Futsal<span>Hub</span>
